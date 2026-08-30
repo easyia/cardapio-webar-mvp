@@ -3,9 +3,9 @@ import {
   Sparkles, 
   Smartphone, 
   Store, 
-  Utensils,
-  ChevronRight,
-  Flame
+  Utensils, 
+  ChevronRight, 
+  Flame 
 } from 'lucide-react';
 import type { Restaurant, Category, Dish, CartItem } from './types';
 import { storeService } from './services/storeService';
@@ -17,6 +17,7 @@ import { DishCard } from './components/client/DishCard';
 import { DishDetailModal } from './components/client/DishDetailModal';
 import { CartDrawer } from './components/client/CartDrawer';
 import { ARPromptModal } from './components/ar/ARPromptModal';
+import { LiveCameraARView } from './components/ar/LiveCameraARView';
 
 // Admin components
 import { AdminHeader } from './components/admin/AdminHeader';
@@ -44,6 +45,7 @@ export function App() {
   // Modals & Drawers
   const [selectedDishDetail, setSelectedDishDetail] = useState<Dish | null>(null);
   const [arPromptDish, setArPromptDish] = useState<Dish | null>(null);
+  const [liveCameraDish, setLiveCameraDish] = useState<Dish | null>(null);
   const [isCartOpen, setIsCartOpen] = useState<boolean>(false);
   const [cartItems, setCartItems] = useState<CartItem[]>([]);
 
@@ -69,13 +71,29 @@ export function App() {
       setViewMode('admin');
     }
     const dishIdParam = params.get('dishId');
+    const arParam = params.get('ar');
     if (dishIdParam) {
       const foundDish = dishes.find(d => d.id === dishIdParam);
       if (foundDish) {
-        setSelectedDishDetail(foundDish);
+        const isMobile = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
+        if (arParam === 'true' && isMobile) {
+          setLiveCameraDish(foundDish);
+        } else {
+          setSelectedDishDetail(foundDish);
+        }
       }
     }
   }, [dishes]);
+
+  // Handle AR projection trigger
+  const handleTriggerAR = (dish: Dish) => {
+    const isMobile = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
+    if (isMobile) {
+      setLiveCameraDish(dish);
+    } else {
+      setArPromptDish(dish);
+    }
+  };
 
   // Handle Cart logic
   const handleAddToCart = (dish: Dish, quantity = 1, notes?: string) => {
@@ -282,7 +300,7 @@ export function App() {
                       key={dish.id}
                       dish={dish}
                       onOpenDetail={(d) => setSelectedDishDetail(d)}
-                      onOpenAR={(d) => setSelectedDishDetail(d)}
+                      onOpenAR={(d) => handleTriggerAR(d)}
                       onAddToCart={(d, e) => {
                         e.stopPropagation();
                         handleAddToCart(d, 1);
@@ -388,7 +406,7 @@ export function App() {
         isOpen={Boolean(selectedDishDetail)}
         onClose={() => setSelectedDishDetail(null)}
         onAddToCart={handleAddToCart}
-        onOpenARPrompt={(dish) => setArPromptDish(dish)}
+        onOpenARPrompt={(dish) => handleTriggerAR(dish)}
       />
 
       {/* Desktop WebAR QR Code Prompt Modal */}
@@ -397,6 +415,13 @@ export function App() {
         isOpen={Boolean(arPromptDish)}
         onClose={() => setArPromptDish(null)}
         restaurantSlug={restaurant.slug}
+      />
+
+      {/* Live Camera AR Surface Projector View (Works on ALL mobile devices) */}
+      <LiveCameraARView
+        dish={liveCameraDish}
+        isOpen={Boolean(liveCameraDish)}
+        onClose={() => setLiveCameraDish(null)}
       />
 
       {/* Cart Drawer & Order Simulator */}
