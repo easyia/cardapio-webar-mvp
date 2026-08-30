@@ -10,6 +10,7 @@ import {
   Utensils
 } from 'lucide-react';
 import type { Restaurant } from '../../types';
+import { getAccessibleUrl } from '../../utils/urlHelper';
 
 interface QRCodeGeneratorProps {
   restaurant: Restaurant;
@@ -21,10 +22,10 @@ export const QRCodeGenerator: React.FC<QRCodeGeneratorProps> = ({ restaurant }) 
   const [copied, setCopied] = useState(false);
   const printRef = useRef<HTMLDivElement>(null);
 
-  const baseUrl = window.location.origin + window.location.pathname;
+  const path = window.location.pathname;
   const qrUrl = isGeneralMenu
-    ? `${baseUrl}?r=${restaurant.slug}`
-    : `${baseUrl}?r=${restaurant.slug}&mesa=${selectedTable}`;
+    ? getAccessibleUrl(`${path}?r=${restaurant.slug}`)
+    : getAccessibleUrl(`${path}?r=${restaurant.slug}&mesa=${selectedTable}`);
 
   const handleCopy = () => {
     navigator.clipboard.writeText(qrUrl);

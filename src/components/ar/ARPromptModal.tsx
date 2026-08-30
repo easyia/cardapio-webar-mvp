@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { QRCodeSVG } from 'qrcode.react';
 import { X, Smartphone, Sparkles, CheckCircle, Copy, ExternalLink } from 'lucide-react';
 import type { Dish } from '../../types';
+import { getAccessibleUrl } from '../../utils/urlHelper';
 
 interface ARPromptModalProps {
   dish: Dish | null;
@@ -19,10 +20,9 @@ export const ARPromptModal: React.FC<ARPromptModalProps> = ({
 
   if (!isOpen || !dish) return null;
 
-  // Direct AR URL for mobile devices
-  const currentOrigin = window.location.origin;
+  // Direct AR URL for mobile devices that works across the local Wi-Fi and production
   const currentPath = window.location.pathname;
-  const directARUrl = `${currentOrigin}${currentPath}?dishId=${dish.id}&ar=true`;
+  const directARUrl = getAccessibleUrl(`${currentPath}?dishId=${dish.id}&ar=true`);
 
   const handleCopyLink = () => {
     navigator.clipboard.writeText(directARUrl);
@@ -57,7 +57,7 @@ export const ARPromptModal: React.FC<ARPromptModalProps> = ({
             <Smartphone className="w-7 h-7 animate-bounce" style={{ animationDuration: '2s' }} />
           </div>
           <h3 className="text-xl font-extrabold text-white font-heading">
-            Projetar Prato em Realidade Aumentada
+            Veja na sua Mesa em Realidade Aumentada
           </h3>
           <p className="text-xs text-slate-300 mt-1 max-w-xs mx-auto">
             Aponte a câmera do seu celular para o QR Code abaixo para projetar o <strong className="text-orange-300 font-semibold">{dish.name}</strong> em escala real 1:1 na sua mesa!
@@ -82,7 +82,7 @@ export const ARPromptModal: React.FC<ARPromptModalProps> = ({
           />
           <div className="flex items-center gap-1.5 mt-2 text-[11px] font-bold text-slate-900">
             <Sparkles className="w-3.5 h-3.5 text-orange-500 animate-pulse" />
-            <span>Aponte a Câmera do Celular</span>
+            <span>Escaneie com a Câmera</span>
           </div>
         </div>
 
@@ -90,11 +90,11 @@ export const ARPromptModal: React.FC<ARPromptModalProps> = ({
         <div className="mt-5 space-y-2 bg-slate-950/80 rounded-2xl p-3.5 border border-slate-800">
           <div className="flex items-start gap-2.5">
             <span className="w-5 h-5 rounded-full bg-orange-500/20 text-orange-400 font-bold text-xs flex items-center justify-center flex-shrink-0 mt-0.5">1</span>
-            <p className="text-xs text-slate-300">Abra a câmera do celular (iPhone ou Android) e mire no QR Code.</p>
+            <p className="text-xs text-slate-300">Abra a câmera do celular (iPhone ou Android) e aponte para o QR Code.</p>
           </div>
           <div className="flex items-start gap-2.5">
             <span className="w-5 h-5 rounded-full bg-orange-500/20 text-orange-400 font-bold text-xs flex items-center justify-center flex-shrink-0 mt-0.5">2</span>
-            <p className="text-xs text-slate-300">Toque no link que surgir para abrir no navegador.</p>
+            <p className="text-xs text-slate-300">Toque no link amarelo que surgir para abrir o prato diretamente.</p>
           </div>
           <div className="flex items-start gap-2.5">
             <span className="w-5 h-5 rounded-full bg-orange-500/20 text-orange-400 font-bold text-xs flex items-center justify-center flex-shrink-0 mt-0.5">3</span>
@@ -111,12 +111,12 @@ export const ARPromptModal: React.FC<ARPromptModalProps> = ({
             {copied ? (
               <>
                 <CheckCircle className="w-4 h-4 text-emerald-400" />
-                <span>Link do Prato Copiado!</span>
+                <span>Link Copiado!</span>
               </>
             ) : (
               <>
                 <Copy className="w-4 h-4 text-slate-400" />
-                <span>Copiar Link Direto do Prato</span>
+                <span>Copiar Link do AR</span>
               </>
             )}
           </button>
@@ -124,7 +124,7 @@ export const ARPromptModal: React.FC<ARPromptModalProps> = ({
           <button
             onClick={() => window.open(directARUrl, '_blank')}
             className="p-2.5 bg-orange-500/20 hover:bg-orange-500/30 text-orange-300 border border-orange-500/40 rounded-xl flex items-center justify-center transition-colors"
-            title="Abrir link em nova aba"
+            title="Abrir em nova aba"
           >
             <ExternalLink className="w-4 h-4" />
           </button>
