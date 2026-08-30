@@ -8,7 +8,8 @@ import {
   ZoomIn, 
   Layers, 
   Loader2,
-  Camera
+  Camera,
+  QrCode
 } from 'lucide-react';
 import type { Dish } from '../../types';
 import { storeService } from '../../services/storeService';
@@ -32,14 +33,14 @@ export const ModelViewer3D: React.FC<ModelViewer3DProps> = ({
   const [loading, setLoading] = useState(true);
   const [isRotating, setIsRotating] = useState(autoRotate);
   const [lightingPreset, setLightingPreset] = useState<'neutral' | 'warm' | 'studio'>('warm');
-  const [isARSupported, setIsARSupported] = useState(false);
+  const [isMobileDevice, setIsMobileDevice] = useState(false);
   const [progress, setProgress] = useState(0);
   const [hasError, setHasError] = useState(false);
 
   useEffect(() => {
-    // Detect mobile / AR support
+    // Detect mobile device
     const isMobile = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
-    setIsARSupported(isMobile);
+    setIsMobileDevice(isMobile);
 
     const viewer = modelViewerRef.current;
     if (!viewer) return;
@@ -58,25 +59,57 @@ export const ModelViewer3D: React.FC<ModelViewer3DProps> = ({
       setHasError(true);
     };
 
+    const handleARStatus = (event: any) => {
+      if (event.detail?.status === 'failed') {
+        console.warn('AR launch status:', event.detail);
+      }
+    };
+
     viewer.addEventListener('progress', handleProgress);
     viewer.addEventListener('load', handleLoad);
     viewer.addEventListener('error', handleError);
+    viewer.addEventListener('ar-status', handleARStatus);
 
     return () => {
       viewer.removeEventListener('progress', handleProgress);
       viewer.removeEventListener('load', handleLoad);
       viewer.removeEventListener('error', handleError);
+      viewer.removeEventListener('ar-status', handleARStatus);
     };
   }, [dish.model_3d_url]);
 
-  const handleLaunchAR = () => {
+  const handleLaunchAR = (e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
     storeService.incrementARView(dish.id);
+
     const viewer = modelViewerRef.current;
-    if (viewer && isARSupported) {
-      if (typeof viewer.activateAR === 'function') {
-        viewer.activateAR();
+    const isAndroid = /Android/i.test(navigator.userAgent);
+    const isIOS = /iPhone|iPad|iPod/i.test(navigator.userAgent);
+
+    if (viewer && (viewer.canActivateAR || isAndroid || isIOS)) {
+      try {
+        if (typeof viewer.activateAR === 'function') {
+          viewer.activateAR();
+          return;
+        }
+      } catch (err) {
+        console.warn('modelViewer.activateAR error, attempting fallback:', err);
       }
-    } else if (onOpenARModal) {
+
+      // Android Scene Viewer direct fallback
+      if (isAndroid) {
+        const glbUrl = dish.model_3d_url.startsWith('http') 
+          ? dish.model_3d_url 
+          : `${window.location.origin}${dish.model_3d_url}`;
+        const sceneViewerUrl = `intent://arvr.google.com/scene-viewer/1.0?file=${encodeURIComponent(glbUrl)}&mode=ar_only&resizable=false&title=${encodeURIComponent(dish.name)}#Intent;scheme=https;package=com.google.android.googlequicksearchbox;action=android.intent.action.VIEW;end;`;
+        window.location.href = sceneViewerUrl;
+        return;
+      }
+    }
+
+    // Fallback: If on desktop or AR not directly triggerable, open QR Code modal for mobile scan
+    if (onOpenARModal) {
       onOpenARModal();
     }
   };
@@ -111,10 +144,6 @@ export const ModelViewer3D: React.FC<ModelViewer3DProps> = ({
     }
   };
 
-  const getShadowIntensity = () => {
-    return '1.4';
-  };
-
   return (
     <div className={`relative rounded-2xl overflow-hidden bg-gradient-to-b from-slate-900 via-slate-950 to-black border border-slate-800 shadow-2xl flex flex-col items-center justify-center group ${className}`}>
       
@@ -134,7 +163,7 @@ export const ModelViewer3D: React.FC<ModelViewer3DProps> = ({
         auto-rotate={isRotating ? '' : undefined}
         auto-rotate-delay={500}
         rotation-per-second="25deg"
-        shadow-intensity={getShadowIntensity()}
+        shadow-intensity="1.4"
         shadow-softness="0.9"
         exposure={getExposure()}
         interaction-prompt="auto"
@@ -146,6 +175,14 @@ export const ModelViewer3D: React.FC<ModelViewer3DProps> = ({
         max-camera-orbit="auto auto 200%"
         className="w-full h-full cursor-grab active:cursor-grabbing"
       >
+        {/* Native AR Button slot inside model-viewer */}
+        <button
+          slot="ar-button"
+          id="native-ar-btn"
+          className="hidden"
+          aria-label="Abrir em Realidade Aumentada"
+        />
+
         {/* Slot Poster / Fallback */}
         <div slot="poster" className="absolute inset-0 flex items-center justify-center bg-slate-900">
           <img 
@@ -155,7 +192,7 @@ export const ModelViewer3D: React.FC<ModelViewer3DProps> = ({
           />
           <div className="absolute inset-0 bg-gradient-to-t from-slate-950 via-slate-950/70 to-transparent flex flex-col items-center justify-center p-6 text-center">
             <Loader2 className="w-8 h-8 text-orange-500 animate-spin mb-3" />
-            <p className="text-sm font-semibold text-slate-200">Carregando modelo 3D ultra realista...</p>
+            <p className="text-sm font-semibold text-slate-200">Carregando modelo 3D...</p>
             <p className="text-xs text-slate-400 mt-1">{progress}% concluído</p>
           </div>
         </div>
@@ -167,7 +204,7 @@ export const ModelViewer3D: React.FC<ModelViewer3DProps> = ({
         <div className="absolute inset-0 pointer-events-none flex flex-col items-center justify-center bg-slate-950/60 backdrop-blur-xs transition-opacity">
           <div className="flex items-center gap-2 bg-slate-900/90 border border-slate-700/80 px-4 py-2 rounded-full shadow-lg">
             <Loader2 className="w-4 h-4 text-orange-400 animate-spin" />
-            <span className="text-xs font-medium text-slate-200">Otimizando malha 3D ({progress}%)</span>
+            <span className="text-xs font-medium text-slate-200">Carregando malha 3D ({progress}%)</span>
           </div>
         </div>
       )}
@@ -177,7 +214,7 @@ export const ModelViewer3D: React.FC<ModelViewer3DProps> = ({
         <div className="absolute inset-0 flex flex-col items-center justify-center bg-slate-950/90 p-6 text-center">
           <img src={dish.image_url} alt={dish.name} className="w-24 h-24 object-cover rounded-xl mb-3 shadow-lg border border-slate-700" />
           <p className="text-sm font-semibold text-slate-200">Visualização 3D em processamento</p>
-          <p className="text-xs text-slate-400 mt-1 max-w-xs">Exibindo imagem ultra HD do prato. Você ainda pode projetar em AR no seu celular.</p>
+          <p className="text-xs text-slate-400 mt-1 max-w-xs">Exibindo imagem do prato. Você ainda pode projetar em AR no seu celular.</p>
         </div>
       )}
 
@@ -195,24 +232,37 @@ export const ModelViewer3D: React.FC<ModelViewer3DProps> = ({
       </div>
 
       {/* Bottom Main Action Button: VER NA MESA (AR TRIGGER) */}
-      <div className="absolute bottom-4 left-4 right-4 z-20 flex flex-col sm:flex-row items-center gap-2">
+      <div className="absolute bottom-4 left-4 right-4 z-20">
         <button
+          type="button"
           onClick={handleLaunchAR}
-          className="w-full py-3.5 px-5 bg-gradient-to-r from-orange-500 via-amber-500 to-orange-600 hover:from-orange-400 hover:to-orange-500 text-white font-bold rounded-xl shadow-lg shadow-orange-500/25 flex items-center justify-center gap-2.5 transition-all transform active:scale-[0.98] border border-orange-400/30 group/btn"
+          className="w-full py-3.5 px-5 bg-gradient-to-r from-orange-500 via-amber-500 to-orange-600 hover:from-orange-400 hover:to-orange-500 text-white font-bold rounded-2xl shadow-xl shadow-orange-500/30 flex items-center justify-between gap-3 transition-all transform active:scale-[0.98] border border-orange-400/40 group/btn cursor-pointer"
         >
-          <div className="p-1 rounded-lg bg-white/20 group-hover/btn:rotate-12 transition-transform">
-            <Camera className="w-5 h-5 text-white" />
-          </div>
-          <div className="text-left flex-1">
-            <div className="text-sm leading-tight font-extrabold flex items-center gap-1.5">
-              <span>PROJETAR NA MINHA MESA</span>
-              <Sparkles className="w-3.5 h-3.5 text-yellow-200 animate-pulse" />
+          <div className="flex items-center gap-3">
+            <div className="p-2 rounded-xl bg-white/20 group-hover/btn:rotate-12 transition-transform shadow-inner flex items-center justify-center">
+              <Camera className="w-5 h-5 text-white" />
             </div>
-            <div className="text-[10px] text-orange-100 font-normal">
-              {isARSupported ? 'Toque para abrir a câmera e ver em Realidade Aumentada' : 'Aponte a câmera do celular para ver na mesa'}
+            <div className="text-left">
+              <div className="text-sm leading-tight font-extrabold flex items-center gap-1.5 text-white">
+                <span>{isMobileDevice ? 'PROJETAR NA MINHA MESA' : 'VER EM REALIDADE AUMENTADA'}</span>
+                <Sparkles className="w-3.5 h-3.5 text-yellow-200 animate-pulse" />
+              </div>
+              <div className="text-[11px] text-orange-100 font-normal">
+                {isMobileDevice 
+                  ? 'Toque para abrir a câmera e projetar na mesa' 
+                  : 'Clique para escanear o QR Code no seu celular'}
+              </div>
             </div>
           </div>
-          <Smartphone className="w-5 h-5 opacity-90 hidden xs:block" />
+
+          {isMobileDevice ? (
+            <Smartphone className="w-6 h-6 text-white/90 animate-pulse-subtle flex-shrink-0" />
+          ) : (
+            <div className="p-1.5 rounded-lg bg-black/20 text-orange-200 flex items-center gap-1 text-xs font-bold flex-shrink-0">
+              <QrCode className="w-4 h-4" />
+              <span className="hidden xs:inline">QR Code</span>
+            </div>
+          )}
         </button>
       </div>
 
@@ -253,7 +303,7 @@ export const ModelViewer3D: React.FC<ModelViewer3DProps> = ({
       )}
 
       {/* Interaction Help Hint */}
-      <div className="absolute bottom-20 left-1/2 -translate-x-1/2 pointer-events-none opacity-80 group-hover:opacity-100 transition-opacity">
+      <div className="absolute bottom-22 left-1/2 -translate-x-1/2 pointer-events-none opacity-80 group-hover:opacity-100 transition-opacity">
         <span className="text-[11px] text-slate-400 bg-slate-950/80 backdrop-blur-xs px-3 py-1 rounded-full border border-slate-800/80 flex items-center gap-1.5 shadow-sm">
           <span>👆 Arraste para girar em 360° • Pinça para zoom</span>
         </span>
