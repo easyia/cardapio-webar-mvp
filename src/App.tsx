@@ -1,14 +1,20 @@
 import { useState, useEffect } from 'react';
 import { 
-  Sparkles, 
   Smartphone, 
   Store, 
   Utensils, 
   ChevronRight, 
-  Flame 
+  Flame,
+  ChefHat,
+  Home
 } from 'lucide-react';
 import type { Restaurant, Category, Dish, CartItem } from './types';
 import { storeService } from './services/storeService';
+import { i18n } from './services/i18n';
+import type { Language } from './types/i18n';
+
+// Landing Page
+import { LandingPage } from './components/landing/LandingPage';
 
 // Client components
 import { Header } from './components/client/Header';
@@ -26,11 +32,17 @@ import { DishesManager } from './components/admin/DishesManager';
 import { CategoriesManager } from './components/admin/CategoriesManager';
 import { RestaurantProfile } from './components/admin/RestaurantProfile';
 import { QRCodeGenerator } from './components/admin/QRCodeGenerator';
+import { InsightsAnalytics } from './components/admin/InsightsAnalytics';
+import { KitchenKDS } from './components/admin/KitchenKDS';
+import { SubscriptionBilling } from './components/admin/SubscriptionBilling';
 
 export function App() {
-  // Navigation mode: 'client' | 'admin'
-  const [viewMode, setViewMode] = useState<'client' | 'admin'>('client');
+  // Navigation mode: 'landing' | 'client' | 'admin' | 'kds'
+  const [viewMode, setViewMode] = useState<'landing' | 'client' | 'admin' | 'kds'>('landing');
   const [adminTab, setAdminTab] = useState<AdminTab>('dishes');
+
+  // i18n Language State
+  const [currentLang, setCurrentLang] = useState<Language>(i18n.getLanguage());
 
   // Reactive state from local storeService
   const [restaurant, setRestaurant] = useState<Restaurant>(storeService.getRestaurant());
@@ -49,50 +61,61 @@ export function App() {
   const [isCartOpen, setIsCartOpen] = useState<boolean>(false);
   const [cartItems, setCartItems] = useState<CartItem[]>([]);
 
-  // Subscribe to storeService changes
+  // Subscribe to storeService and i18n changes
   useEffect(() => {
-    const unsubscribe = storeService.subscribe(() => {
+    const unsubStore = storeService.subscribe(() => {
       setRestaurant(storeService.getRestaurant());
       setCategories(storeService.getCategories());
       setDishes(storeService.getDishes());
     });
-    return unsubscribe;
+
+    const unsubI18n = i18n.subscribe(() => {
+      setCurrentLang(i18n.getLanguage());
+    });
+
+    return () => {
+      unsubStore();
+      unsubI18n();
+    };
   }, []);
 
-  // Parse URL search params (e.g. ?mesa=08, ?admin=true, ?dishId=dish-01&ar=true)
+  // Parse URL search params
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const mesaParam = params.get('mesa');
     if (mesaParam) {
       setTableNumber(mesaParam);
+      setViewMode('client');
+    }
+    const modeParam = params.get('mode');
+    if (modeParam === 'client' || modeParam === 'admin' || modeParam === 'kds' || modeParam === 'landing') {
+      setViewMode(modeParam as any);
     }
     const adminParam = params.get('admin');
     if (adminParam === 'true') {
       setViewMode('admin');
     }
     const dishIdParam = params.get('dishId');
-    const arParam = params.get('ar');
     if (dishIdParam) {
       const foundDish = dishes.find(d => d.id === dishIdParam);
       if (foundDish) {
-        const isMobile = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
-        if (arParam === 'true' && isMobile) {
-          setLiveCameraDish(foundDish);
-        } else {
-          setSelectedDishDetail(foundDish);
-        }
+        setViewMode('client');
+        setSelectedDishDetail(foundDish);
       }
     }
   }, [dishes]);
+
+  const handleLanguageChange = (lang: Language) => {
+    i18n.setLanguage(lang);
+    setCurrentLang(lang);
+  };
 
   // Handle AR projection trigger
   const handleTriggerAR = (dish: Dish) => {
     const isMobile = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
     if (isMobile) {
-      // On mobile, open dish detail with 3D model & 1-tap native ARKit/SceneViewer
       setSelectedDishDetail(dish);
     } else {
-      // On desktop, show QR code modal
       setArPromptDish(dish);
     }
   };
@@ -145,53 +168,98 @@ export function App() {
     dishesCountByCategory[d.category_id] = (dishesCountByCategory[d.category_id] || 0) + 1;
   });
 
+  const t = i18n.t();
+
+  // =========================================================================
+  // VIEW MODE: LANDING PAGE (SILICON VALLEY CONVERSION SITE)
+  // =========================================================================
+  if (viewMode === 'landing') {
+    return (
+      <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col font-sans">
+        <LandingPage
+          onOpenClientDemo={() => setViewMode('client')}
+          onOpenAdminDemo={() => setViewMode('admin')}
+          currentLang={currentLang}
+          onLanguageChange={handleLanguageChange}
+        />
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col selection:bg-orange-500 selection:text-white font-sans">
       
-      {/* Top Demo Bar / Quick View Mode Switcher */}
+      {/* Top Demo Bar / Quick Navigation Switcher */}
       <div className="bg-slate-900 border-b border-slate-800 text-xs py-2 px-4 sticky top-0 z-40 backdrop-blur-md bg-opacity-95">
-        <div className="max-w-6xl mx-auto flex items-center justify-between gap-2">
+        <div className="max-w-7xl mx-auto flex items-center justify-between gap-2">
           
-          {/* Status & Badge */}
+          {/* Status & Brand */}
           <div className="flex items-center gap-2">
-            <span className="flex h-2 w-2 relative">
-              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-orange-400 opacity-75"></span>
-              <span className="relative inline-flex rounded-full h-2 w-2 bg-orange-500"></span>
-            </span>
-            <span className="font-extrabold text-orange-400 tracking-wide uppercase text-[11px] hidden xs:inline">
-              AuraMenu WebAR MVP
-            </span>
-            <span className="text-slate-500 hidden sm:inline">•</span>
+            <button 
+              onClick={() => setViewMode('landing')}
+              className="flex items-center gap-1.5 font-extrabold text-orange-400 uppercase tracking-wide text-[11px] hover:text-orange-300 transition-colors"
+            >
+              <Home className="w-3.5 h-3.5" />
+              <span>AuraMenu 3D</span>
+            </button>
+            <span className="text-slate-600 hidden sm:inline">•</span>
             <span className="text-slate-400 text-[11px] hidden sm:inline">
-              Demonstração Ativa sem necessidade de banco
+              v2.0 Produção
             </span>
           </div>
 
           {/* Mode Switcher Buttons */}
           <div className="flex items-center gap-1.5 bg-slate-950 p-1 rounded-xl border border-slate-800">
+            
+            <button
+              onClick={() => setViewMode('landing')}
+              className="px-2.5 py-1 rounded-lg font-bold text-xs flex items-center gap-1 transition-all text-slate-400 hover:text-slate-200"
+            >
+              <Home className="w-3.5 h-3.5" />
+              <span className="hidden md:inline">{t.landingView}</span>
+            </button>
+
             <button
               onClick={() => setViewMode('client')}
-              className={`px-3 py-1 rounded-lg font-bold text-xs flex items-center gap-1.5 transition-all ${
-                viewMode === 'client'
-                  ? 'bg-orange-500 text-white shadow-sm'
-                  : 'text-slate-400 hover:text-slate-200'
+              className={`px-2.5 py-1 rounded-lg font-bold text-xs flex items-center gap-1 transition-all ${
+                viewMode === 'client' ? 'bg-orange-500 text-white shadow-sm' : 'text-slate-400 hover:text-slate-200'
               }`}
             >
               <Smartphone className="w-3.5 h-3.5" />
-              <span>Visão Cliente</span>
+              <span>{t.clientView}</span>
             </button>
 
             <button
               onClick={() => setViewMode('admin')}
-              className={`px-3 py-1 rounded-lg font-bold text-xs flex items-center gap-1.5 transition-all ${
-                viewMode === 'admin'
-                  ? 'bg-orange-500 text-white shadow-sm'
-                  : 'text-slate-400 hover:text-slate-200'
+              className={`px-2.5 py-1 rounded-lg font-bold text-xs flex items-center gap-1 transition-all ${
+                viewMode === 'admin' ? 'bg-orange-500 text-white shadow-sm' : 'text-slate-400 hover:text-slate-200'
               }`}
             >
               <Store className="w-3.5 h-3.5" />
-              <span>Painel Admin</span>
+              <span>{t.adminView}</span>
             </button>
+
+            <button
+              onClick={() => setViewMode('kds')}
+              className={`px-2.5 py-1 rounded-lg font-bold text-xs flex items-center gap-1 transition-all ${
+                viewMode === 'kds' ? 'bg-orange-500 text-white shadow-sm' : 'text-slate-400 hover:text-slate-200'
+              }`}
+            >
+              <ChefHat className="w-3.5 h-3.5" />
+              <span>{t.kdsView}</span>
+            </button>
+
+            {/* Language Switcher */}
+            <div className="pl-1 border-l border-slate-800 flex items-center gap-1">
+              <button
+                onClick={() => handleLanguageChange(currentLang === 'pt-BR' ? 'es-AR' : 'pt-BR')}
+                className="px-2 py-0.5 rounded-md bg-slate-900 hover:bg-slate-800 text-[11px] font-bold text-slate-300 flex items-center gap-1"
+                title="Mudar Idioma"
+              >
+                <span>{currentLang === 'pt-BR' ? '🇧🇷 PT' : '🇦🇷 ES'}</span>
+              </button>
+            </div>
+
           </div>
 
         </div>
@@ -223,18 +291,18 @@ export function App() {
           {/* Main Menu Content Area */}
           <main className="max-w-4xl mx-auto px-4 sm:px-6 py-6 flex-1 w-full space-y-8">
             
-            {/* Highlights Carousel / Banner (If selected 'all' and no active search) */}
+            {/* Highlights Carousel / Banner */}
             {selectedCategoryId === 'all' && !searchQuery && featuredDishes.length > 0 && (
               <div className="space-y-3">
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-2">
                     <Flame className="w-5 h-5 text-orange-500" />
                     <h2 className="text-lg font-black text-white font-heading">
-                      Destaques Imersivos em 3D
+                      {t.featuredTitle}
                     </h2>
                   </div>
                   <span className="text-xs text-orange-400 font-semibold">
-                    Experiência WebAR
+                    {t.featuredSubtitle}
                   </span>
                 </div>
 
@@ -252,13 +320,13 @@ export function App() {
                           className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
                         />
                         <div className="absolute top-1.5 left-1.5 p-1 rounded-lg bg-slate-950/80 backdrop-blur-xs text-orange-400">
-                          <Sparkles className="w-3 h-3 animate-pulse" />
+                          <Flame className="w-3 h-3 animate-pulse" />
                         </div>
                       </div>
 
                       <div className="flex-1 min-w-0">
                         <span className="text-[10px] font-extrabold uppercase px-2 py-0.5 rounded-full bg-orange-500/20 text-orange-300 border border-orange-500/40 inline-block mb-1">
-                          ⭐ Destaque
+                          ⭐ {t.chefSpecial}
                         </span>
                         <h4 className="text-sm font-bold text-white group-hover:text-orange-400 transition-colors truncate font-heading">
                           {dish.name}
@@ -268,10 +336,10 @@ export function App() {
                         </p>
                         <div className="mt-2 flex items-center justify-between">
                           <span className="text-sm font-black text-white">
-                            {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(dish.price)}
+                            {i18n.formatCurrency(dish.price)}
                           </span>
                           <span className="text-[11px] font-bold text-orange-400 flex items-center gap-1 group-hover:translate-x-1 transition-transform">
-                            <span>Ver em 3D</span>
+                            <span>{t.viewIn3D}</span>
                             <ChevronRight className="w-3 h-3" />
                           </span>
                         </div>
@@ -287,11 +355,11 @@ export function App() {
               <div className="flex items-center justify-between">
                 <h2 className="text-lg font-black text-white font-heading">
                   {selectedCategoryId === 'all' 
-                    ? 'Cardápio Completo' 
+                    ? t.allCategories 
                     : categories.find(c => c.id === selectedCategoryId)?.name || 'Pratos'}
                 </h2>
                 <span className="text-xs text-slate-400">
-                  {filteredDishes.length} {filteredDishes.length === 1 ? 'opção' : 'opções'}
+                  {filteredDishes.length} {filteredDishes.length === 1 ? 'item' : 'itens'}
                 </span>
               </div>
 
@@ -314,9 +382,6 @@ export function App() {
                 <div className="p-12 text-center bg-slate-900/60 rounded-3xl border border-slate-800 text-slate-400 space-y-3">
                   <Utensils className="w-10 h-10 mx-auto text-slate-600" />
                   <p className="text-base font-bold text-slate-200">Nenhum prato encontrado</p>
-                  <p className="text-xs text-slate-500 max-w-xs mx-auto">
-                    Tente buscar por outro termo ou escolha outra categoria acima.
-                  </p>
                 </div>
               )}
             </div>
@@ -336,17 +401,17 @@ export function App() {
                   </div>
                   <div className="text-left">
                     <span className="text-xs text-orange-100 block font-normal leading-none">
-                      Mesa {tableNumber}
+                      {t.tableNumberLabel} {tableNumber}
                     </span>
                     <span className="text-sm font-extrabold leading-tight">
-                      Ver Comanda
+                      {t.myOrder}
                     </span>
                   </div>
                 </div>
 
                 <div className="flex items-center gap-2">
                   <span className="text-base font-black">
-                    {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(totalCartPrice)}
+                    {i18n.formatCurrency(totalCartPrice)}
                   </span>
                   <ChevronRight className="w-5 h-5 opacity-80" />
                 </div>
@@ -370,7 +435,7 @@ export function App() {
             categoriesCount={categories.length}
           />
 
-          <main className="max-w-6xl mx-auto px-4 sm:px-6 py-6 flex-1 w-full">
+          <main className="max-w-7xl mx-auto px-4 sm:px-6 py-6 flex-1 w-full">
             {adminTab === 'dishes' && (
               <DishesManager
                 dishes={dishes}
@@ -378,6 +443,14 @@ export function App() {
                 restaurantId={restaurant.id}
                 onPreviewDish={(d) => setSelectedDishDetail(d)}
               />
+            )}
+
+            {adminTab === 'kds' && (
+              <KitchenKDS />
+            )}
+
+            {adminTab === 'insights' && (
+              <InsightsAnalytics dishes={dishes} />
             )}
 
             {adminTab === 'categories' && (
@@ -391,6 +464,10 @@ export function App() {
               <QRCodeGenerator restaurant={restaurant} />
             )}
 
+            {adminTab === 'billing' && (
+              <SubscriptionBilling dishes={dishes} />
+            )}
+
             {adminTab === 'profile' && (
               <RestaurantProfile restaurant={restaurant} />
             )}
@@ -399,7 +476,16 @@ export function App() {
       )}
 
       {/* ========================================================================= */}
-      {/* 3. MODALS & POPUPS                                                        */}
+      {/* 3. KITCHEN KDS VIEW (DEDICATED FULLSCREEN)                                */}
+      {/* ========================================================================= */}
+      {viewMode === 'kds' && (
+        <main className="max-w-7xl mx-auto px-4 sm:px-6 py-6 flex-1 w-full">
+          <KitchenKDS />
+        </main>
+      )}
+
+      {/* ========================================================================= */}
+      {/* 4. MODALS & POPUPS                                                        */}
       {/* ========================================================================= */}
       
       {/* Dish Detail & 3D Interactive Modal */}
@@ -419,14 +505,14 @@ export function App() {
         restaurantSlug={restaurant.slug}
       />
 
-      {/* Live Camera AR Surface Projector View (Works on ALL mobile devices) */}
+      {/* Live Camera AR Surface Projector View */}
       <LiveCameraARView
         dish={liveCameraDish}
         isOpen={Boolean(liveCameraDish)}
         onClose={() => setLiveCameraDish(null)}
       />
 
-      {/* Cart Drawer & Order Simulator */}
+      {/* Cart Drawer with Silicon Valley Checkout */}
       <CartDrawer
         isOpen={isCartOpen}
         onClose={() => setIsCartOpen(false)}
