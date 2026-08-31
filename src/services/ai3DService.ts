@@ -1,4 +1,4 @@
-// AI 3D Generation Service (Tripo3D & Meshy API integration with Vercel Environment Variables support)
+// AI 3D Generation Service with Serverless Backend Support (Tripo3D API)
 
 export interface AI3DTaskResult {
   success: boolean;
@@ -16,205 +16,113 @@ export interface AI3DTaskResult {
 }
 
 const API_CONFIG_KEY = 'auramenu_ai3d_api_key';
-const API_PROVIDER_KEY = 'auramenu_ai3d_provider'; // 'tripo' | 'meshy' | 'demo'
 
 export const ai3DService = {
-  /**
-   * Retrieves API key from localStorage or Vercel Environment Variables (VITE_TRIPO_API_KEY / VITE_MESHY_API_KEY)
-   */
   getApiKey(): string {
     const localKey = localStorage.getItem(API_CONFIG_KEY);
     if (localKey && localKey.trim()) return localKey.trim();
 
-    // Vercel / Vite Environment Variables
-    const envTripoKey = import.meta.env.VITE_TRIPO_API_KEY;
+    const envTripoKey = import.meta.env.VITE_TRIPO_API_KEY || import.meta.env.TRIPO_API_KEY;
     if (envTripoKey && envTripoKey.trim()) return envTripoKey.trim();
-
-    const envMeshyKey = import.meta.env.VITE_MESHY_API_KEY;
-    if (envMeshyKey && envMeshyKey.trim()) return envMeshyKey.trim();
 
     return '';
   },
 
-  setApiKey(key: string, provider: 'tripo' | 'meshy' | 'demo' = 'tripo'): void {
+  setApiKey(key: string): void {
     localStorage.setItem(API_CONFIG_KEY, key);
-    localStorage.setItem(API_PROVIDER_KEY, provider);
-  },
-
-  getProvider(): string {
-    const localProvider = localStorage.getItem(API_PROVIDER_KEY);
-    if (localProvider) return localProvider;
-
-    if (import.meta.env.VITE_MESHY_API_KEY && !import.meta.env.VITE_TRIPO_API_KEY) {
-      return 'meshy';
-    }
-
-    return import.meta.env.VITE_AI3D_PROVIDER || 'tripo';
   },
 
   /**
-   * Generates a 3D model from an image file/URL using Tripo3D / Meshy API or Intelligent AI Simulation
+   * Generates a 3D model from an image file/URL using the Vercel Serverless /api/generate-3d route
    */
   async generate3DFromImage(
     imageDataUrl: string,
     onProgress: (percent: number, statusText: string) => void
   ): Promise<AI3DTaskResult> {
     const apiKey = this.getApiKey();
-    const provider = this.getProvider();
 
-    // If real Tripo3D API Key is provided (either in Vercel env or localStorage)
-    if (apiKey && (provider === 'tripo' || !provider)) {
-      try {
-        return await this.generateWithTripo(imageDataUrl, apiKey, onProgress);
-      } catch (err: any) {
-        console.warn('Tripo API error, falling back to neural food synthesis:', err);
-      }
-    }
+    onProgress(10, 'Enviando imagem do prato para processamento de IA...');
 
-    // If real Meshy API Key is provided
-    if (apiKey && provider === 'meshy') {
-      try {
-        return await this.generateWithMeshy(imageDataUrl, apiKey, onProgress);
-      } catch (err: any) {
-        console.warn('Meshy API error, falling back to neural food synthesis:', err);
-      }
-    }
-
-    // Built-in Instant AI 3D Generation Pipeline for Food items
-    return await this.generateWithSandboxAI(imageDataUrl, onProgress);
-  },
-
-  /**
-   * Real Tripo3D API Image-to-3D pipeline (https://platform.tripo3d.ai)
-   */
-  async generateWithTripo(
-    imageDataUrl: string,
-    apiKey: string,
-    onProgress: (percent: number, statusText: string) => void
-  ): Promise<AI3DTaskResult> {
-    onProgress(10, 'Enviando imagem para a rede neural Tripo3D v2.0...');
-
-    // 1. Create task
-    const createRes = await fetch('https://api.tripo3d.ai/v2/openapi/task', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${apiKey}`,
-      },
-      body: JSON.stringify({
-        type: 'image_to_model',
-        file: {
-          type: 'base64',
-          data: imageDataUrl.split(',')[1] || imageDataUrl,
+    try {
+      // 1. Call serverless backend endpoint
+      const response = await fetch('/api/generate-3d', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
         },
-      }),
-    });
-
-    const createData = await createRes.json();
-    if (createData.code !== 0 || !createData.data?.task_id) {
-      throw new Error(createData.message || 'Falha ao iniciar processamento 3D na Tripo3D');
-    }
-
-    const taskId = createData.data.task_id;
-    onProgress(30, 'Reconstruindo malha volumétrica 3D do produto...');
-
-    // 2. Poll for completion
-    let attempts = 0;
-    while (attempts < 60) {
-      await new Promise(r => setTimeout(r, 2000));
-      attempts++;
-
-      const pollRes = await fetch(`https://api.tripo3d.ai/v2/openapi/task/${taskId}`, {
-        headers: { 'Authorization': `Bearer ${apiKey}` },
+        body: JSON.stringify({
+          imageBase64: imageDataUrl,
+          imageType: 'png',
+          clientApiKey: apiKey || undefined,
+        }),
       });
-      const pollData = await pollRes.json();
 
-      if (pollData.data?.status === 'running') {
-        const progress = Math.min(30 + attempts * 2, 85);
-        onProgress(progress, 'Sintetizando texturas PBR de alta resolução e profundidade...');
-      } else if (pollData.data?.status === 'success') {
-        onProgress(95, 'Otimizando modelo para WebAR (Android & iOS)...');
-        const glbUrl = pollData.data.output?.pbr_model || pollData.data.output?.model;
-        const usdzUrl = pollData.data.output?.usdz || glbUrl;
-        
-        return {
-          success: true,
-          modelGlbUrl: glbUrl,
-          modelUsdzUrl: usdzUrl,
-          previewImageUrl: imageDataUrl,
-          dishSuggestion: {
-            name: 'Café & Doce Artesanal 3D',
-            category: 'cat-01',
-            description: 'Item gerado com fidelidade fotorealista por IA a partir da foto enviada.',
-            estimatedPrice: 22.00,
-            ingredients: ['Ingredientes selecionados'],
-          },
-          logs: ['Tripo3D AI task completed successfully', `Task ID: ${taskId}`],
-        };
-      } else if (pollData.data?.status === 'failed') {
-        throw new Error('Falha no processamento da malha 3D.');
+      const data = await response.json();
+
+      if (!response.ok || !data.taskId) {
+        throw new Error(data.error || 'Falha ao iniciar processamento 3D no servidor.');
       }
-    }
 
-    throw new Error('Tempo limite de geração excedido.');
+      const taskId = data.taskId;
+      onProgress(25, 'IA reconstruindo geometria 3D e profundidade...');
+
+      // 2. Poll task status until finished
+      let attempts = 0;
+      while (attempts < 60) {
+        await new Promise(r => setTimeout(r, 2500));
+        attempts++;
+
+        const statusRes = await fetch(`/api/task-status?taskId=${encodeURIComponent(taskId)}&clientApiKey=${encodeURIComponent(apiKey)}`);
+        const statusData = await statusRes.json();
+
+        if (statusData.status === 'running' || statusData.status === 'queued') {
+          const p = Math.min(25 + attempts * 2.5, 90);
+          onProgress(p, `Gerando malha 3D e texturas PBR (${Math.round(p)}%)...`);
+        } else if (statusData.status === 'success') {
+          onProgress(95, 'Otimizando modelo 3D para Realidade Aumentada (Android & iOS)...');
+          
+          const glbUrl = statusData.output?.pbr_model || statusData.output?.model || statusData.output?.base_model;
+          const usdzUrl = statusData.output?.usdz || glbUrl;
+
+          if (!glbUrl) {
+            throw new Error('A IA não retornou o arquivo .GLB do modelo 3D.');
+          }
+
+          onProgress(100, 'Modelo 3D gerado com sucesso!');
+
+          return {
+            success: true,
+            modelGlbUrl: glbUrl,
+            modelUsdzUrl: usdzUrl,
+            previewImageUrl: imageDataUrl,
+            dishSuggestion: {
+              name: 'Item de Cafeteria 3D',
+              category: 'cat-01',
+              description: 'Modelo 3D gerado por inteligência artificial a partir da foto capturada.',
+              estimatedPrice: 22.00,
+              ingredients: ['Café Especial', 'Ingredientes Selecionados'],
+            },
+            logs: [
+              `Tripo3D Task ID: ${taskId}`,
+              'Reconstrução 3D neural concluída com sucesso',
+              'Dual Engine AR: Compatível com Android (SceneViewer) e iOS (QuickLook)'
+            ]
+          };
+        } else if (statusData.status === 'failed') {
+          throw new Error('A IA da Tripo3D não conseguiu processar esta imagem. Tente com uma foto mais nítida.');
+        }
+      }
+
+      throw new Error('Tempo limite de geração excedido (mais de 2 minutos).');
+    } catch (err: any) {
+      console.warn('Serverless generation error, falling back to local food generator:', err);
+      // If serverless is not running (e.g. pure local vite dev without vercel cli), fallback to clean food generator
+      return await this.generateWithSandboxAI(imageDataUrl, onProgress);
+    }
   },
 
   /**
-   * Real Meshy.ai API Image-to-3D pipeline
-   */
-  async generateWithMeshy(
-    imageDataUrl: string,
-    apiKey: string,
-    onProgress: (percent: number, statusText: string) => void
-  ): Promise<AI3DTaskResult> {
-    onProgress(15, 'Conectando ao cluster de renderização Meshy.ai...');
-
-    const createRes = await fetch('https://api.meshy.ai/v2/image-to-3d', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${apiKey}`,
-      },
-      body: JSON.stringify({
-        image_url: imageDataUrl,
-        enable_pbr: true,
-        surface_mode: 'organic',
-      }),
-    });
-
-    const createData = await createRes.json();
-    const taskId = createData.result;
-    if (!taskId) throw new Error('Falha ao iniciar tarefa na Meshy.ai');
-
-    let attempts = 0;
-    while (attempts < 60) {
-      await new Promise(r => setTimeout(r, 2500));
-      attempts++;
-
-      const pollRes = await fetch(`https://api.meshy.ai/v2/image-to-3d/${taskId}`, {
-        headers: { 'Authorization': `Bearer ${apiKey}` },
-      });
-      const pollData = await pollRes.json();
-
-      if (pollData.status === 'IN_PROGRESS') {
-        onProgress(Math.min(20 + pollData.progress * 0.7, 90), `Calculando geometria e materiais (${pollData.progress}%)...`);
-      } else if (pollData.status === 'SUCCEEDED') {
-        onProgress(100, 'Modelo 3D gerado com sucesso!');
-        return {
-          success: true,
-          modelGlbUrl: pollData.model_urls?.glb,
-          modelUsdzUrl: pollData.model_urls?.usdz || pollData.model_urls?.glb,
-          previewImageUrl: imageDataUrl,
-          logs: ['Meshy.ai generation completed', `Task ID: ${taskId}`],
-        };
-      }
-    }
-
-    throw new Error('Tempo limite excedido na Meshy.');
-  },
-
-  /**
-   * Neural Food Generation Fallback
+   * Local Food Generation Fallback
    */
   async generateWithSandboxAI(
     imageDataUrl: string,
