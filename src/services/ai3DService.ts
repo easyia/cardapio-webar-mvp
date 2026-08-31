@@ -1,57 +1,48 @@
-// AI 3D Hiper-Realistic Photogrammetry Service (Zero Hallucination, Faithful Image Texture Projection)
+// AI 3D Generation Service (Client image compressor + Vercel Serverless proxy)
 
 export interface AI3DTaskResult {
   success: boolean;
-  taskId: string;
   modelGlbUrl: string;
   modelUsdzUrl: string;
   previewImageUrl: string;
-  isRefined?: boolean;
   dishSuggestion?: {
     name: string;
     category: string;
     description: string;
     estimatedPrice: number;
     ingredients: string[];
-    suggestedScale: number;
   };
   logs: string[];
 }
 
 const API_CONFIG_KEY = 'auramenu_ai3d_api_key';
 
-// Auto-crop to 1:1 square centered on the plate/dish to eliminate outer table clutter (arms, lighters, napkins)
-async function prepareCleanPhotoFor3D(dataUrl: string, maxDimension = 1500): Promise<string> {
+// Helper to resize large smartphone photos (e.g. 12MP 4000x3000 -> 1024x1024) to keep uploads under 300KB
+async function optimizeImageFor3D(dataUrl: string, maxDimension = 1024): Promise<string> {
   return new Promise((resolve) => {
     const img = new Image();
     img.crossOrigin = 'anonymous';
     img.onload = () => {
-      const origW = img.width;
-      const origH = img.height;
-
-      // Calculate square bounding box centered on the subject
-      const squareSize = Math.min(origW, origH);
-      const cropX = Math.round((origW - squareSize) / 2);
-      const cropY = Math.round((origH - squareSize) / 2);
-
-      const targetDim = Math.min(squareSize, maxDimension);
+      let { width, height } = img;
+      if (width > maxDimension || height > maxDimension) {
+        if (width > height) {
+          height = Math.round((height * maxDimension) / width);
+          width = maxDimension;
+        } else {
+          width = Math.round((width * maxDimension) / height);
+          height = maxDimension;
+        }
+      }
 
       const canvas = document.createElement('canvas');
-      canvas.width = targetDim;
-      canvas.height = targetDim;
+      canvas.width = width;
+      canvas.height = height;
       const ctx = canvas.getContext('2d');
       if (ctx) {
-        ctx.imageSmoothingEnabled = true;
-        ctx.imageSmoothingQuality = 'high';
-        
-        // Draw cropped square of the central subject
-        ctx.drawImage(
-          img,
-          cropX, cropY, squareSize, squareSize, // Source crop
-          0, 0, targetDim, targetDim            // Destination
-        );
-
-        resolve(canvas.toDataURL('image/jpeg', 0.95));
+        ctx.fillStyle = '#ffffff';
+        ctx.fillRect(0, 0, width, height);
+        ctx.drawImage(img, 0, 0, width, height);
+        resolve(canvas.toDataURL('image/jpeg', 0.88));
       } else {
         resolve(dataUrl);
       }
@@ -86,39 +77,29 @@ export const ai3DService = {
   },
 
   /**
-   * Hiper-Realistic 3D Photogrammetry Reconstruction from User Photos (Zero AI Hallucination)
+   * Generates a 3D model from an image file/URL using the proven single-photo algorithm
    */
-  async generate3DFromMultipleImages(
-    rawImages: string[],
-    onProgress: (percent: number, statusText: string) => void,
-    quality: 'ultra' | 'standard' = 'ultra'
+  async generate3DFromImage(
+    rawImageDataUrl: string,
+    onProgress: (percent: number, statusText: string) => void
   ): Promise<AI3DTaskResult> {
-    if (!rawImages.length) {
-      throw new Error('Nenhuma foto foi fornecida.');
-    }
-
     const apiKey = this.getApiKey();
 
-    onProgress(5, 'Centralizando foto no produto e eliminando distrações ao redor...');
-    const optimizedImages = await Promise.all(rawImages.map(img => prepareCleanPhotoFor3D(img, 1500)));
+    onProgress(5, 'Otimizando imagem para reconstrução 3D...');
+    const optimizedImage = await optimizeImageFor3D(rawImageDataUrl, 1024);
 
-    onProgress(15, rawImages.length === 1 
-      ? 'Enviando foto para reconstrução 3D hiper-realista...' 
-      : `Enviando ${optimizedImages.length} fotos para reconstrução volumétrica multi-view...`
-    );
+    onProgress(15, 'Enviando imagem para a IA da Tripo3D...');
 
     try {
-      // 1. Call serverless backend endpoint (pure image photogrammetry)
+      // 1. Call serverless backend endpoint to start image_to_model
       const response = await fetch('/api/generate-3d', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          imagesBase64: optimizedImages,
-          imageBase64: optimizedImages[0],
+          imageBase64: optimizedImage,
           imageType: 'jpg',
-          quality,
           clientApiKey: apiKey || undefined,
         }),
       });
@@ -135,18 +116,14 @@ export const ai3DService = {
       }
 
       const taskId = data.taskId;
-      const isMulti = data.type === 'multiview_to_model';
-      onProgress(25, isMulti 
-        ? 'Reconstruindo malha 3D de até 50.000 polígonos a partir dos múltiplos ângulos...' 
-        : 'Mapeando texturas e calculando relevo volumétrico da foto real...'
-      );
+      onProgress(25, 'IA calculando malha poligonal e profundidade...');
 
       // 2. Poll task status until GLB is ready
       let attempts = 0;
       let rawGlbUrl = '';
       let rawUsdzUrl = '';
 
-      while (attempts < 70) {
+      while (attempts < 60) {
         await new Promise(r => setTimeout(r, 2500));
         attempts++;
 
@@ -156,8 +133,8 @@ export const ai3DService = {
         const statusData = await statusRes.json();
 
         if (statusData.status === 'running' || statusData.status === 'queued') {
-          const p = Math.min(25 + attempts * 2.2, 85);
-          onProgress(p, `Mapeando texturas fotográficas e relevo real (${Math.round(p)}%)...`);
+          const p = Math.min(25 + attempts * 2.5, 85);
+          onProgress(p, `Sintetizando texturas PBR e geometria (${Math.round(p)}%)...`);
         } else if (statusData.status === 'success') {
           rawGlbUrl =
             statusData.output?.pbr_model ||
@@ -167,7 +144,7 @@ export const ai3DService = {
 
           break;
         } else if (statusData.status === 'failed') {
-          throw new Error('A IA não conseguiu processar este item. Tente tirar a foto focando no prato com boa iluminação.');
+          throw new Error('A IA não conseguiu processar esta foto. Tente tirar uma foto mais nítida a 45°.');
         }
       }
 
@@ -175,9 +152,9 @@ export const ai3DService = {
         throw new Error('Tempo limite de geração excedido ou modelo GLB não retornado.');
       }
 
-      onProgress(88, 'Preparando formatos para WebAR (Android Scene Viewer & Apple Quick Look)...');
+      onProgress(88, 'Preparando formatos para WebAR (Android & Apple Quick Look)...');
 
-      // 3. Request USDZ conversion if not returned directly
+      // 3. If USDZ was not returned directly, request USDZ conversion from Tripo
       if (!rawUsdzUrl) {
         try {
           const convertRes = await fetch('/api/generate-3d', {
@@ -192,6 +169,7 @@ export const ai3DService = {
           const convertData = await convertRes.json();
           if (convertData.success && convertData.taskId) {
             const convertTaskId = convertData.taskId;
+            // Poll conversion task (usually takes 5-10s)
             let convAttempts = 0;
             while (convAttempts < 15) {
               await new Promise(r => setTimeout(r, 2000));
@@ -211,31 +189,29 @@ export const ai3DService = {
         }
       }
 
-      // Build safe WebAR proxy URLs using Base64
+      // Build safe WebAR proxy URLs with base64 encoding to preserve AWS S3 signed parameters
       const finalGlbUrl = encodeUrlForProxy(rawGlbUrl, 'glb');
       const finalUsdzUrl = rawUsdzUrl
         ? encodeUrlForProxy(rawUsdzUrl, 'usdz')
         : finalGlbUrl;
 
-      onProgress(100, `Modelo 3D Hiper-Realista Concluído!`);
+      onProgress(100, 'Modelo 3D pronto com suporte a Realidade Aumentada!');
 
       return {
         success: true,
-        taskId: taskId,
         modelGlbUrl: finalGlbUrl,
         modelUsdzUrl: finalUsdzUrl,
-        previewImageUrl: optimizedImages[0],
+        previewImageUrl: optimizedImage,
         dishSuggestion: {
-          name: 'Prato Especial em 3D',
+          name: 'Item Autoral em 3D',
           category: 'cat-01',
-          description: `Item fotografado e reconstruído fielmente em 3D para o cardápio com Realidade Aumentada.`,
-          estimatedPrice: 32.00,
+          description: 'Modelo 3D gerado por IA a partir da foto do produto, pronto para projeção em Realidade Aumentada.',
+          estimatedPrice: 24.00,
           ingredients: ['Ingredientes selecionados'],
-          suggestedScale: 0.35,
         },
         logs: [
           `Tripo3D Task ID: ${taskId}`,
-          `Reconstrução Fiel 1:1 Concluída`,
+          'Reconstrução 3D neural concluída',
           'Dual WebAR: GLB (Android SceneViewer) + USDZ (Apple QuickLook)'
         ]
       };
@@ -246,77 +222,12 @@ export const ai3DService = {
   },
 
   /**
-   * Super Refinement Stage: Runs high-resolution geometric refinement
+   * Compatibility alias
    */
-  async refine3DModel(
-    draftTaskId: string,
-    onProgress: (percent: number, statusText: string) => void
-  ): Promise<{ modelGlbUrl: string; modelUsdzUrl: string }> {
-    const apiKey = this.getApiKey();
-    onProgress(10, 'Iniciando Super Refinamento HD (Polindo geometria e texturas)...');
-
-    const refineRes = await fetch('/api/generate-3d', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        requestType: 'refine_model',
-        originalTaskId: draftTaskId,
-        clientApiKey: apiKey || undefined,
-      }),
-    });
-
-    const refineData = await refineRes.json();
-    if (!refineData.success || !refineData.taskId) {
-      throw new Error(refineData.error || 'Falha ao solicitar Super Refinamento.');
-    }
-
-    const refineTaskId = refineData.taskId;
-    let attempts = 0;
-    let rawGlbUrl = '';
-    let rawUsdzUrl = '';
-
-    while (attempts < 60) {
-      await new Promise(r => setTimeout(r, 2500));
-      attempts++;
-
-      const statusRes = await fetch(
-        `/api/task-status?taskId=${encodeURIComponent(refineTaskId)}&clientApiKey=${encodeURIComponent(apiKey)}`
-      );
-      const statusData = await statusRes.json();
-
-      if (statusData.status === 'running' || statusData.status === 'queued') {
-        const p = Math.min(15 + attempts * 2.5, 90);
-        onProgress(p, `Polindo bordas e refinando texturas (${Math.round(p)}%)...`);
-      } else if (statusData.status === 'success') {
-        rawGlbUrl =
-          statusData.output?.pbr_model ||
-          statusData.output?.model ||
-          statusData.output?.base_model;
-        rawUsdzUrl = statusData.output?.usdz || '';
-        break;
-      } else if (statusData.status === 'failed') {
-        throw new Error('Falha no refinamento do modelo.');
-      }
-    }
-
-    if (!rawGlbUrl) {
-      throw new Error('Tempo limite de refinamento excedido.');
-    }
-
-    const finalGlbUrl = encodeUrlForProxy(rawGlbUrl, 'glb');
-    const finalUsdzUrl = rawUsdzUrl ? encodeUrlForProxy(rawUsdzUrl, 'usdz') : finalGlbUrl;
-
-    onProgress(100, 'Super Refinamento Concluído!');
-    return { modelGlbUrl: finalGlbUrl, modelUsdzUrl: finalUsdzUrl };
-  },
-
-  /**
-   * Single image generation fallback
-   */
-  async generate3DFromImage(
-    rawImageDataUrl: string,
+  async generate3DFromMultipleImages(
+    rawImages: string[],
     onProgress: (percent: number, statusText: string) => void
   ): Promise<AI3DTaskResult> {
-    return this.generate3DFromMultipleImages([rawImageDataUrl], onProgress, 'ultra');
+    return this.generate3DFromImage(rawImages[0], onProgress);
   }
 };

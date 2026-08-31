@@ -1,4 +1,4 @@
-// Vercel Serverless Function: Pure Photogrammetry Proxy to Tripo3D API (Zero Hallucination, Faithful Image Texture Projection)
+// Vercel Serverless Function: Proxy to Tripo3D API (Proven Original Single-Photo Algorithm)
 export const config = {
   api: {
     bodyParser: {
@@ -27,17 +27,9 @@ export default async function handler(req: any, res: any) {
   }
 
   try {
-    const { 
-      imageBase64, 
-      imagesBase64, // Array of base64 photos for multi-view photogrammetry
-      imageType, 
-      clientApiKey, 
-      requestType, 
-      originalTaskId,
-      quality = 'ultra'
-    } = req.body || {};
+    const { imageBase64, imageType, clientApiKey, requestType, originalTaskId } = req.body || {};
 
-    // Get Tripo API Key
+    // Get Tripo API Key from environment or client
     const apiKey = 
       process.env.TRIPO_API_KEY || 
       process.env.VITE_TRIPO_API_KEY || 
@@ -74,100 +66,16 @@ export default async function handler(req: any, res: any) {
       }
     }
 
-    // 2. If this is a Model Refinement task request (Refine Mesh & 2K PBR Textures)
-    if (requestType === 'refine_model' && originalTaskId) {
-      const refineRes = await fetch('https://api.tripo3d.ai/v2/openapi/task', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${apiKey.trim()}`,
-        },
-        body: JSON.stringify({
-          type: 'refine_model',
-          draft_model_task_id: originalTaskId,
-        }),
-      });
-
-      const refineData = await refineRes.json();
-      if (refineData.code === 0 && refineData.data?.task_id) {
-        return res.status(200).json({
-          success: true,
-          taskId: refineData.data.task_id,
-          type: 'refine_model',
-        });
-      }
+    // 2. Standard image_to_model task request (The proven single-photo algorithm)
+    if (!imageBase64) {
+      return res.status(400).json({ error: 'Nenhuma imagem foi enviada.' });
     }
 
-    // 3. Multi-view Photogrammetry (Multi-photo for high-fidelity 3D dishes)
-    if (Array.isArray(imagesBase64) && imagesBase64.length > 1) {
-      const formattedFiles = imagesBase64.map((b64: string) => {
-        const cleanB64 = b64.includes('base64,') ? b64.split('base64,')[1] : b64;
-        return {
-          type: 'jpg',
-          data: cleanB64,
-        };
-      });
-
-      const tripoMultiPayload: any = {
-        type: 'multiview_to_model',
-        files: formattedFiles,
-        params: {
-          texture: true,
-          pbr: true,
-          face_limit: quality === 'ultra' ? 50000 : 35000,
-          texture_resolution: 2048,
-        }
-      };
-
-      const tripoMultiRes = await fetch('https://api.tripo3d.ai/v2/openapi/task', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${apiKey.trim()}`,
-        },
-        body: JSON.stringify(tripoMultiPayload),
-      });
-
-      const tripoMultiData = await tripoMultiRes.json();
-
-      if (tripoMultiData.code === 0 && tripoMultiData.data?.task_id) {
-        return res.status(200).json({
-          success: true,
-          taskId: tripoMultiData.data.task_id,
-          type: 'multiview_to_model',
-          viewsCount: imagesBase64.length,
-        });
-      }
-
-      console.warn('Multiview fallback to single image:', tripoMultiData);
-    }
-
-    // 4. Single Image to 3D Model: Pure Image Photogrammetry (NO Text Prompts that hallucinate)
-    const primaryImage = imageBase64 || (Array.isArray(imagesBase64) ? imagesBase64[0] : null);
-
-    if (!primaryImage) {
-      return res.status(400).json({ error: 'Nenhuma foto enviada para geração 3D.' });
-    }
-
-    const base64Data = primaryImage.includes('base64,')
-      ? primaryImage.split('base64,')[1]
-      : primaryImage;
+    const base64Data = imageBase64.includes('base64,')
+      ? imageBase64.split('base64,')[1]
+      : imageBase64;
 
     const fileFormat = imageType === 'image/jpeg' ? 'jpg' : (imageType || 'png');
-
-    const singleImagePayload: any = {
-      type: 'image_to_model',
-      file: {
-        type: fileFormat,
-        data: base64Data,
-      },
-      params: {
-        texture: true,
-        pbr: true,
-        face_limit: quality === 'ultra' ? 48000 : 32000,
-        texture_resolution: 2048,
-      }
-    };
 
     const tripoRes = await fetch('https://api.tripo3d.ai/v2/openapi/task', {
       method: 'POST',
@@ -175,40 +83,21 @@ export default async function handler(req: any, res: any) {
         'Content-Type': 'application/json',
         'Authorization': `Bearer ${apiKey.trim()}`,
       },
-      body: JSON.stringify(singleImagePayload),
+      body: JSON.stringify({
+        type: 'image_to_model',
+        file: {
+          type: fileFormat,
+          data: base64Data,
+        },
+      }),
     });
 
     const tripoData = await tripoRes.json();
 
     if (tripoData.code !== 0 || !tripoData.data?.task_id) {
-      // Direct fallback
-      const fallbackRes = await fetch('https://api.tripo3d.ai/v2/openapi/task', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${apiKey.trim()}`,
-        },
-        body: JSON.stringify({
-          type: 'image_to_model',
-          file: {
-            type: fileFormat,
-            data: base64Data,
-          },
-        }),
-      });
-
-      const fallbackData = await fallbackRes.json();
-      if (fallbackData.code !== 0 || !fallbackData.data?.task_id) {
-        return res.status(400).json({
-          error: fallbackData.message || tripoData.message || 'Erro ao processar imagem na Tripo3D',
-          details: fallbackData,
-        });
-      }
-
-      return res.status(200).json({
-        success: true,
-        taskId: fallbackData.data.task_id,
-        type: 'image_to_model',
+      return res.status(400).json({
+        error: tripoData.message || 'Erro ao processar imagem na Tripo3D',
+        details: tripoData,
       });
     }
 
