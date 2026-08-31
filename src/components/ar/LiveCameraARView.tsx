@@ -2,7 +2,6 @@ import React, { useEffect, useRef, useState } from 'react';
 import { 
   X, 
   RotateCw, 
-  Sparkles, 
   Smartphone, 
   AlertCircle,
   Sun,
