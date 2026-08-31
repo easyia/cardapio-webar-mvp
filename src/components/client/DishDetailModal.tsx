@@ -22,6 +22,7 @@ interface DishDetailModalProps {
   onClose: () => void;
   onAddToCart: (dish: Dish, quantity: number, notes?: string) => void;
   onOpenARPrompt: (dish: Dish) => void;
+  onOpenLiveCamera?: (dish: Dish) => void;
 }
 
 export const DishDetailModal: React.FC<DishDetailModalProps> = ({
@@ -30,6 +31,7 @@ export const DishDetailModal: React.FC<DishDetailModalProps> = ({
   onClose,
   onAddToCart,
   onOpenARPrompt,
+  onOpenLiveCamera,
 }) => {
   const t = i18n.t();
   const [viewMode, setViewMode] = useState<'3d' | 'photo'>('3d');
@@ -74,6 +76,7 @@ export const DishDetailModal: React.FC<DishDetailModalProps> = ({
               dish={dish}
               className="w-full h-full rounded-none border-none"
               onOpenARModal={() => onOpenARPrompt(dish)}
+              onOpenLiveCamera={onOpenLiveCamera}
             />
           ) : (
             <div className="w-full h-full relative">

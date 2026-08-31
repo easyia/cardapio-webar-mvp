@@ -495,6 +495,7 @@ export function App() {
         onClose={() => setSelectedDishDetail(null)}
         onAddToCart={handleAddToCart}
         onOpenARPrompt={(dish) => handleTriggerAR(dish)}
+        onOpenLiveCamera={(dish) => setLiveCameraDish(dish)}
       />
 
       {/* Desktop WebAR QR Code Prompt Modal */}
