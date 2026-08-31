@@ -319,6 +319,13 @@ export const ModelViewer3D: React.FC<ModelViewer3DProps> = ({
           <div className="flex items-center gap-1 bg-[#161412]/90 backdrop-blur-md border border-[#2B2723] px-2.5 py-1 rounded-full text-[11px] font-mono text-[#FAF8F5]">
             <span>{Math.round(currentScale * 100)}%</span>
           </div>
+
+          {/* Plating Badge */}
+          {dish.plating_type && dish.plating_type !== 'none' && (
+            <div className="flex items-center gap-1 bg-[#161412]/90 backdrop-blur-md border border-amber-500/30 px-2.5 py-1 rounded-full text-[11px] font-medium text-amber-200 shadow-md">
+              <span>{dish.plating_type === 'white_porcelain' ? '🍽️ Prato' : dish.plating_type === 'wooden_board' ? '🪵 Tábua' : '☕ Pires'}</span>
+            </div>
+          )}
         </div>
 
         <div className="flex items-center gap-1.5 bg-[#0C0B0A]/85 backdrop-blur-md border border-[#1E1B18] px-2.5 py-1 rounded-full text-[11px] font-medium text-slate-300">

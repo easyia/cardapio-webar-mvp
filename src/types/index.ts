@@ -23,6 +23,8 @@ export interface Category {
   order_index: number;
 }
 
+export type PlatingType = 'none' | 'white_porcelain' | 'slate_board' | 'wooden_board' | 'coffee_saucer';
+
 export interface Dish {
   id: string;
   category_id: string;
@@ -36,6 +38,7 @@ export interface Dish {
   usdz_url?: string;
   ar_ready?: boolean;
   scale?: number;
+  plating_type?: PlatingType;
   is_active: boolean;
   is_featured?: boolean;
   is_chef_special?: boolean;

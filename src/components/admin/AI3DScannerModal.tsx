@@ -15,12 +15,13 @@ import {
   Plus,
   Trash2,
   Video,
-  Film
+  Film,
+  Utensils
 } from 'lucide-react';
 import { ai3DService } from '../../services/ai3DService';
 import type { AI3DTaskResult } from '../../services/ai3DService';
 import { ModelViewer3D } from '../ar/ModelViewer3D';
-import type { Dish, Category } from '../../types';
+import type { Dish, Category, PlatingType } from '../../types';
 import { storeService } from '../../services/storeService';
 
 interface AI3DScannerModalProps {
@@ -112,6 +113,9 @@ export const AI3DScannerModal: React.FC<AI3DScannerModalProps> = ({
 
   // Scale state (default: 0.35)
   const [scale, setScale] = useState<number>(0.35);
+
+  // Plating / Support type
+  const [platingType, setPlatingType] = useState<PlatingType>('white_porcelain');
 
   // Quick publish form fields inside the modal (Auto-identified by AI)
   const [dishName, setDishName] = useState('');
@@ -219,6 +223,7 @@ export const AI3DScannerModal: React.FC<AI3DScannerModalProps> = ({
       model_3d_url: generatedResult.modelGlbUrl,
       usdz_url: generatedResult.modelUsdzUrl,
       scale: scale || 0.35,
+      plating_type: platingType,
       is_active: true,
       is_featured: true,
       is_chef_special: true,
@@ -254,6 +259,7 @@ export const AI3DScannerModal: React.FC<AI3DScannerModalProps> = ({
     model_3d_url: generatedResult.modelGlbUrl,
     usdz_url: generatedResult.modelUsdzUrl,
     scale: scale,
+    plating_type: platingType,
     is_active: true,
     ar_ready: true,
     created_at: new Date().toISOString(),
@@ -277,11 +283,11 @@ export const AI3DScannerModal: React.FC<AI3DScannerModalProps> = ({
                   Estúdio IA: Foto ou Vídeo ➔ 3D & WebAR
                 </h3>
                 <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-400 border border-emerald-500/40">
-                  Fotos & Vídeos
+                  Com Suporte de Prato
                 </span>
               </div>
               <p className="text-xs text-[#A39E93]">
-                Envie fotos (1 a 4) ou grave um vídeo curto de 5s ao redor do prato
+                Envie fotos ou vídeo curto de 5s ao redor do prato
               </p>
             </div>
           </div>
@@ -549,6 +555,70 @@ export const AI3DScannerModal: React.FC<AI3DScannerModalProps> = ({
                   initialScale={scale}
                   onScaleChange={setScale}
                 />
+              </div>
+
+              {/* Plating / Presentation Support Selector */}
+              <div className="p-4 bg-[#0C0B0A] border border-amber-500/30 rounded-2xl space-y-2.5">
+                <div className="flex items-center justify-between text-xs font-bold text-[#FAF8F5]">
+                  <span className="flex items-center gap-1.5 text-amber-400">
+                    <Utensils className="w-4 h-4" />
+                    <span>Apresentação na Mesa (Prato / Suporte de Apoio):</span>
+                  </span>
+                </div>
+
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 pt-1">
+                  <button
+                    type="button"
+                    onClick={() => setPlatingType('white_porcelain')}
+                    className={`py-2 px-3 rounded-xl text-xs font-bold border transition-all flex items-center justify-center gap-1.5 ${
+                      platingType === 'white_porcelain'
+                        ? 'bg-amber-600 text-white border-amber-400 shadow-md'
+                        : 'bg-[#161412] text-[#A39E93] border-[#2B2723] hover:text-white'
+                    }`}
+                  >
+                    <span>🍽️</span>
+                    <span>Prato Porcelana</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setPlatingType('wooden_board')}
+                    className={`py-2 px-3 rounded-xl text-xs font-bold border transition-all flex items-center justify-center gap-1.5 ${
+                      platingType === 'wooden_board'
+                        ? 'bg-amber-600 text-white border-amber-400 shadow-md'
+                        : 'bg-[#161412] text-[#A39E93] border-[#2B2723] hover:text-white'
+                    }`}
+                  >
+                    <span>🪵</span>
+                    <span>Tábua Madeira</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setPlatingType('coffee_saucer')}
+                    className={`py-2 px-3 rounded-xl text-xs font-bold border transition-all flex items-center justify-center gap-1.5 ${
+                      platingType === 'coffee_saucer'
+                        ? 'bg-amber-600 text-white border-amber-400 shadow-md'
+                        : 'bg-[#161412] text-[#A39E93] border-[#2B2723] hover:text-white'
+                    }`}
+                  >
+                    <span>☕</span>
+                    <span>Pires de Café</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setPlatingType('none')}
+                    className={`py-2 px-3 rounded-xl text-xs font-bold border transition-all flex items-center justify-center gap-1.5 ${
+                      platingType === 'none'
+                        ? 'bg-amber-600 text-white border-amber-400 shadow-md'
+                        : 'bg-[#161412] text-[#A39E93] border-[#2B2723] hover:text-white'
+                    }`}
+                  >
+                    <span>✨</span>
+                    <span>Sem Prato (Solo)</span>
+                  </button>
+                </div>
               </div>
 
               {/* Scale Control */}
