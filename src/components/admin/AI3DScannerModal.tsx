@@ -13,7 +13,9 @@ import {
   Sliders,
   Layers,
   Plus,
-  Trash2
+  Trash2,
+  Video,
+  Film
 } from 'lucide-react';
 import { ai3DService } from '../../services/ai3DService';
 import type { AI3DTaskResult } from '../../services/ai3DService';
@@ -27,13 +29,80 @@ interface AI3DScannerModalProps {
   onApply3DModel?: (result: AI3DTaskResult) => void;
 }
 
+// Client-side video keyframe extractor (extracts 4 equidistant 360° frames from a short video)
+async function extractFramesFromVideo(videoFile: File, frameCount = 4): Promise<string[]> {
+  return new Promise((resolve, reject) => {
+    const video = document.createElement('video');
+    video.preload = 'metadata';
+    video.muted = true;
+    video.playsInline = true;
+
+    const url = URL.createObjectURL(videoFile);
+    video.src = url;
+
+    video.onloadedmetadata = async () => {
+      const duration = video.duration || 3;
+      const timestamps: number[] = [];
+      for (let i = 1; i <= frameCount; i++) {
+        timestamps.push((duration * i) / (frameCount + 1));
+      }
+
+      const frames: string[] = [];
+      const canvas = document.createElement('canvas');
+      const ctx = canvas.getContext('2d');
+
+      for (const time of timestamps) {
+        await new Promise<void>((resSeek) => {
+          video.currentTime = time;
+          video.onseeked = () => {
+            const maxDim = 1024;
+            let { videoWidth: w, videoHeight: h } = video;
+            if (!w || !h) {
+              w = 1024;
+              h = 768;
+            }
+            if (w > maxDim || h > maxDim) {
+              if (w > h) {
+                h = Math.round((h * maxDim) / w);
+                w = maxDim;
+              } else {
+                w = Math.round((w * maxDim) / h);
+                h = maxDim;
+              }
+            }
+            canvas.width = w;
+            canvas.height = h;
+            if (ctx) {
+              ctx.drawImage(video, 0, 0, w, h);
+              frames.push(canvas.toDataURL('image/jpeg', 0.88));
+            }
+            resSeek();
+          };
+        });
+      }
+
+      URL.revokeObjectURL(url);
+      resolve(frames);
+    };
+
+    video.onerror = () => {
+      URL.revokeObjectURL(url);
+      reject(new Error('Não foi possível ler o arquivo de vídeo.'));
+    };
+  });
+}
+
 export const AI3DScannerModal: React.FC<AI3DScannerModalProps> = ({
   isOpen,
   onClose,
   onApply3DModel,
 }) => {
+  // Capture mode: 'photo' | 'video'
+  const [captureMode, setCaptureMode] = useState<'photo' | 'video'>('photo');
+
   // Photos state (1 to 4 photos)
   const [images, setImages] = useState<string[]>([]);
+  const [isExtractingVideo, setIsExtractingVideo] = useState(false);
   const [isGenerating, setIsGenerating] = useState(false);
   const [progress, setProgress] = useState(0);
   const [statusText, setStatusText] = useState('');
@@ -52,6 +121,7 @@ export const AI3DScannerModal: React.FC<AI3DScannerModalProps> = ({
   const [publishedSuccess, setPublishedSuccess] = useState(false);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const videoInputRef = useRef<HTMLInputElement>(null);
   const categories: Category[] = storeService.getCategories();
 
   if (!isOpen) return null;
@@ -71,6 +141,24 @@ export const AI3DScannerModal: React.FC<AI3DScannerModalProps> = ({
       };
       reader.readAsDataURL(file);
     });
+  };
+
+  const handleVideoSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    setIsExtractingVideo(true);
+    try {
+      const extracted = await extractFramesFromVideo(file, 4);
+      if (extracted.length) {
+        setImages(extracted);
+        setGeneratedResult(null);
+      }
+    } catch (err: any) {
+      alert(`Erro ao processar vídeo: ${err.message || 'Tente gravar um vídeo curto de 5 segundos.'}`);
+    } finally {
+      setIsExtractingVideo(false);
+    }
   };
 
   const handleRemovePhoto = (index: number) => {
@@ -186,14 +274,14 @@ export const AI3DScannerModal: React.FC<AI3DScannerModalProps> = ({
             <div>
               <div className="flex items-center gap-2">
                 <h3 className="text-lg font-black text-white font-heading">
-                  Estúdio IA: Foto ➔ Modelo 3D & WebAR
+                  Estúdio IA: Foto ou Vídeo ➔ 3D & WebAR
                 </h3>
                 <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-400 border border-emerald-500/40">
-                  1 a 4 Fotos
+                  Fotos & Vídeos
                 </span>
               </div>
               <p className="text-xs text-[#A39E93]">
-                Envie de 1 a 4 fotos (1 foto já é suficiente, fotos extras trazem visão 360°)
+                Envie fotos (1 a 4) ou grave um vídeo curto de 5s ao redor do prato
               </p>
             </div>
           </div>
@@ -250,76 +338,164 @@ export const AI3DScannerModal: React.FC<AI3DScannerModalProps> = ({
         {/* Content Area */}
         <div className="p-6 overflow-y-auto flex-1 space-y-6">
           
-          {/* STEP 1: Select 1 to 4 Photos */}
+          {/* STEP 1: Select Format (Photos vs Video) */}
           {!generatedResult && !isGenerating && (
             <div className="space-y-5">
               
-              {/* Photo Upload Area */}
-              <div>
-                <div className="flex items-center justify-between mb-2">
-                  <label className="text-xs font-bold text-[#FAF8F5] uppercase tracking-wider flex items-center gap-1.5">
-                    <Layers className="w-4 h-4 text-amber-400" />
-                    <span>Fotos do Produto ({images.length}/4)</span>
-                  </label>
-                  <span className="text-[11px] text-amber-400 font-bold">
-                    {images.length === 0 ? 'Tire 1 foto a 45°' : `${images.length} foto(s) pronta(s)`}
-                  </span>
-                </div>
+              {/* Toggle Mode: Fotos vs Vídeo Curto */}
+              <div className="flex items-center bg-[#0C0B0A] p-1 rounded-2xl border border-[#1E1B18]">
+                <button
+                  type="button"
+                  onClick={() => setCaptureMode('photo')}
+                  className={`flex-1 py-2 rounded-xl text-xs font-bold flex items-center justify-center gap-2 transition-all ${
+                    captureMode === 'photo'
+                      ? 'bg-gradient-to-r from-amber-600 to-orange-600 text-white shadow-md'
+                      : 'text-[#A39E93] hover:text-white'
+                  }`}
+                >
+                  <Camera className="w-4 h-4" />
+                  <span>Fotos (1 a 4 Ângulos)</span>
+                </button>
 
-                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-                  {images.map((img, index) => (
-                    <div key={index} className="relative aspect-square rounded-2xl overflow-hidden border-2 border-amber-500/50 bg-[#0C0B0A] group">
-                      <img src={img} alt={`Foto ${index + 1}`} className="w-full h-full object-cover" />
-                      <div className="absolute top-1.5 left-1.5 px-2 py-0.5 rounded-md bg-[#0C0B0A]/85 text-[10px] font-bold text-amber-300 border border-amber-500/30">
-                        {index === 0 ? 'Foto Principal' : `Ângulo ${index + 1}`}
+                <button
+                  type="button"
+                  onClick={() => setCaptureMode('video')}
+                  className={`flex-1 py-2 rounded-xl text-xs font-bold flex items-center justify-center gap-2 transition-all ${
+                    captureMode === 'video'
+                      ? 'bg-gradient-to-r from-amber-600 to-orange-600 text-white shadow-md'
+                      : 'text-[#A39E93] hover:text-white'
+                  }`}
+                >
+                  <Video className="w-4 h-4" />
+                  <span>Vídeo Curto (3 a 10s)</span>
+                </button>
+              </div>
+
+              {/* Mode A: Photo Selector */}
+              {captureMode === 'photo' && (
+                <div>
+                  <div className="flex items-center justify-between mb-2">
+                    <label className="text-xs font-bold text-[#FAF8F5] uppercase tracking-wider flex items-center gap-1.5">
+                      <Layers className="w-4 h-4 text-amber-400" />
+                      <span>Fotos do Produto ({images.length}/4)</span>
+                    </label>
+                    <span className="text-[11px] text-amber-400 font-bold">
+                      {images.length === 0 ? 'Tire 1 foto a 45°' : `${images.length} foto(s) pronta(s)`}
+                    </span>
+                  </div>
+
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                    {images.map((img, index) => (
+                      <div key={index} className="relative aspect-square rounded-2xl overflow-hidden border-2 border-amber-500/50 bg-[#0C0B0A] group">
+                        <img src={img} alt={`Foto ${index + 1}`} className="w-full h-full object-cover" />
+                        <div className="absolute top-1.5 left-1.5 px-2 py-0.5 rounded-md bg-[#0C0B0A]/85 text-[10px] font-bold text-amber-300 border border-amber-500/30">
+                          {index === 0 ? 'Foto Principal' : `Ângulo ${index + 1}`}
+                        </div>
+                        <button
+                          onClick={() => handleRemovePhoto(index)}
+                          className="absolute top-1.5 right-1.5 p-1 rounded-lg bg-rose-950/90 text-rose-300 hover:text-white border border-rose-600 transition-colors shadow-md"
+                          title="Remover foto"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
                       </div>
-                      <button
-                        onClick={() => handleRemovePhoto(index)}
-                        className="absolute top-1.5 right-1.5 p-1 rounded-lg bg-rose-950/90 text-rose-300 hover:text-white border border-rose-600 transition-colors shadow-md"
-                        title="Remover foto"
+                    ))}
+
+                    {images.length < 4 && (
+                      <div
+                        onClick={() => fileInputRef.current?.click()}
+                        className="aspect-square rounded-2xl border-2 border-dashed border-[#2B2723] hover:border-amber-500 bg-[#0C0B0A]/60 hover:bg-[#0C0B0A] flex flex-col items-center justify-center p-3 text-center cursor-pointer transition-all group"
                       >
-                        <Trash2 className="w-3.5 h-3.5" />
-                      </button>
-                    </div>
-                  ))}
-
-                  {images.length < 4 && (
-                    <div
-                      onClick={() => fileInputRef.current?.click()}
-                      className="aspect-square rounded-2xl border-2 border-dashed border-[#2B2723] hover:border-amber-500 bg-[#0C0B0A]/60 hover:bg-[#0C0B0A] flex flex-col items-center justify-center p-3 text-center cursor-pointer transition-all group"
-                    >
-                      <div className="w-10 h-10 rounded-xl bg-amber-500/10 text-amber-400 border border-amber-500/30 flex items-center justify-center mb-1.5 group-hover:scale-110 transition-transform">
-                        {images.length === 0 ? <Camera className="w-5 h-5" /> : <Plus className="w-5 h-5" />}
+                        <div className="w-10 h-10 rounded-xl bg-amber-500/10 text-amber-400 border border-amber-500/30 flex items-center justify-center mb-1.5 group-hover:scale-110 transition-transform">
+                          {images.length === 0 ? <Camera className="w-5 h-5" /> : <Plus className="w-5 h-5" />}
+                        </div>
+                        <span className="text-[11px] font-bold text-white leading-tight">
+                          {images.length === 0 ? 'Tirar Foto' : '+ Outro Ângulo'}
+                        </span>
+                        <span className="text-[9px] text-[#A39E93] mt-0.5">
+                          {images.length === 0 ? 'Frente a 45°' : 'Opcional 360°'}
+                        </span>
                       </div>
-                      <span className="text-[11px] font-bold text-white leading-tight">
-                        {images.length === 0 ? 'Tirar Foto' : '+ Outro Ângulo'}
+                    )}
+                  </div>
+
+                  <input
+                    ref={fileInputRef}
+                    type="file"
+                    accept="image/*"
+                    multiple
+                    capture="environment"
+                    onChange={handleAddPhotos}
+                    className="hidden"
+                  />
+                </div>
+              )}
+
+              {/* Mode B: Short Video Scanner */}
+              {captureMode === 'video' && (
+                <div className="space-y-3">
+                  <div
+                    onClick={() => videoInputRef.current?.click()}
+                    className="aspect-video max-h-56 rounded-2xl border-2 border-dashed border-amber-500/40 hover:border-amber-500 bg-[#0C0B0A]/60 hover:bg-[#0C0B0A] flex flex-col items-center justify-center p-6 text-center cursor-pointer transition-all group"
+                  >
+                    <div className="w-14 h-14 rounded-2xl bg-amber-500/15 text-amber-400 border border-amber-500/40 flex items-center justify-center mb-2.5 group-hover:scale-110 transition-transform shadow-lg">
+                      <Film className="w-7 h-7" />
+                    </div>
+                    <span className="text-sm font-bold text-white leading-tight">
+                      Grave ou Envie um Vídeo Curto (3 a 10s)
+                    </span>
+                    <span className="text-xs text-[#A39E93] mt-1 max-w-sm">
+                      Faça um movimento suave em semicírculo ou volta ao redor do prato. A IA extrai automaticamente os 4 melhores ângulos 360°!
+                    </span>
+                  </div>
+
+                  <input
+                    ref={videoInputRef}
+                    type="file"
+                    accept="video/*"
+                    capture="environment"
+                    onChange={handleVideoSelect}
+                    className="hidden"
+                  />
+
+                  {/* Render Extracted Keyframes if any */}
+                  {images.length > 0 && (
+                    <div className="p-3 bg-[#0C0B0A] border border-amber-500/30 rounded-2xl space-y-2">
+                      <span className="text-[11px] font-bold text-amber-400 flex items-center gap-1.5">
+                        <Check className="w-4 h-4 text-emerald-400" />
+                        <span>4 Ângulos 360° Extraídos com Sucesso do Vídeo:</span>
                       </span>
-                      <span className="text-[9px] text-[#A39E93] mt-0.5">
-                        {images.length === 0 ? 'Frente a 45°' : 'Opcional 360°'}
-                      </span>
+                      <div className="grid grid-cols-4 gap-2">
+                        {images.map((img, idx) => (
+                          <div key={idx} className="relative aspect-square rounded-xl overflow-hidden border border-amber-500/40">
+                            <img src={img} alt={`Frame ${idx + 1}`} className="w-full h-full object-cover" />
+                            <span className="absolute bottom-1 left-1 bg-black/80 px-1.5 py-0.5 rounded text-[9px] font-bold text-white font-mono">
+                              {idx * 90}°
+                            </span>
+                          </div>
+                        ))}
+                      </div>
                     </div>
                   )}
                 </div>
-              </div>
+              )}
 
-              <input
-                ref={fileInputRef}
-                type="file"
-                accept="image/*"
-                multiple
-                capture="environment"
-                onChange={handleAddPhotos}
-                className="hidden"
-              />
+              {/* Extracting Video Spinner */}
+              {isExtractingVideo && (
+                <div className="p-4 bg-[#0C0B0A] border border-amber-500/30 rounded-2xl flex items-center justify-center gap-3">
+                  <Loader2 className="w-5 h-5 text-amber-400 animate-spin" />
+                  <span className="text-xs font-bold text-slate-200">Extraindo ângulos 360° do vídeo em alta definição...</span>
+                </div>
+              )}
 
               {/* Guidance Box */}
               <div className="p-4 bg-[#0C0B0A] border border-[#1E1B18] rounded-2xl space-y-2">
                 <div className="flex items-center gap-2 text-xs font-bold text-amber-400 uppercase tracking-wider">
                   <Info className="w-4 h-4" />
-                  <span>Dica para melhor resultado 3D:</span>
+                  <span>Dica de Ouro:</span>
                 </div>
                 <p className="text-xs text-[#A39E93] leading-relaxed">
-                  Tire a foto a <strong>45 graus</strong> centralizando o prato ou a xícara inteira. A IA identifica o item e reconstrói o modelo fiel à foto.
+                  Tanto <strong>1 foto rápida</strong> quanto um <strong>vídeo de 5 segundos ao redor da mesa</strong> funcionam perfeitamente. A IA reconstrói o modelo 3D fielmente aos pixels reais.
                 </p>
               </div>
 
@@ -514,7 +690,7 @@ export const AI3DScannerModal: React.FC<AI3DScannerModalProps> = ({
               ) : (
                 <>
                   <Sparkles className="w-4 h-4" />
-                  <span>Gerar Modelo 3D ({images.length} {images.length === 1 ? 'Foto' : 'Fotos'})</span>
+                  <span>Gerar Modelo 3D ({images.length} {images.length === 1 ? 'Foto' : 'Fotos/Frames'})</span>
                   <ArrowRight className="w-4 h-4" />
                 </>
               )}
