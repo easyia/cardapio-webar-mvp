@@ -52,6 +52,15 @@ async function optimizeImageFor3D(dataUrl: string, maxDimension = 1024): Promise
   });
 }
 
+function encodeUrlForProxy(remoteUrl: string, format: 'glb' | 'usdz'): string {
+  try {
+    const b64 = btoa(unescape(encodeURIComponent(remoteUrl)));
+    return `/api/proxy-model?b64=${encodeURIComponent(b64)}&format=${format}&name=item.${format}`;
+  } catch {
+    return `/api/proxy-model?url=${encodeURIComponent(remoteUrl)}&format=${format}&name=item.${format}`;
+  }
+}
+
 export const ai3DService = {
   getApiKey(): string {
     const localKey = localStorage.getItem(API_CONFIG_KEY);
@@ -68,7 +77,7 @@ export const ai3DService = {
   },
 
   /**
-   * Generates a 3D model from multiple photos (Multi-View Photogrammetry for maximum fidelity)
+   * Generates a 3D model from 1 to 4 photos (Single photo works immediately, multiple photos give 360° photogrammetry)
    */
   async generate3DFromMultipleImages(
     rawImages: string[],
@@ -80,13 +89,19 @@ export const ai3DService = {
 
     const apiKey = this.getApiKey();
 
-    onProgress(5, `Otimizando ${rawImages.length} fotos do produto para reconstrução volumétrica...`);
+    onProgress(5, rawImages.length === 1 
+      ? 'Otimizando foto do produto para reconstrução volumétrica 3D...' 
+      : `Otimizando ${rawImages.length} fotos do produto para reconstrução volumétrica...`
+    );
     const optimizedImages = await Promise.all(rawImages.map(img => optimizeImageFor3D(img, 1024)));
 
-    onProgress(15, `Enviando ${optimizedImages.length} ângulos para o cluster neural da Tripo3D...`);
+    onProgress(15, rawImages.length === 1 
+      ? 'Enviando foto para o cluster neural da Tripo3D...' 
+      : `Enviando ${optimizedImages.length} ângulos para o cluster neural da Tripo3D...`
+    );
 
     try {
-      // 1. Call serverless backend endpoint with multi-image array
+      // 1. Call serverless backend endpoint with multi-image array or single image
       const response = await fetch('/api/generate-3d', {
         method: 'POST',
         headers: {
@@ -185,10 +200,10 @@ export const ai3DService = {
         }
       }
 
-      // Build safe WebAR proxy URLs
-      const finalGlbUrl = `/api/proxy-model?url=${encodeURIComponent(rawGlbUrl)}&format=glb&name=item.glb`;
+      // Build safe WebAR proxy URLs using Base64 to prevent AWS S3 signature parameter drops
+      const finalGlbUrl = encodeUrlForProxy(rawGlbUrl, 'glb');
       const finalUsdzUrl = rawUsdzUrl
-        ? `/api/proxy-model?url=${encodeURIComponent(rawUsdzUrl)}&format=usdz&name=item.usdz`
+        ? encodeUrlForProxy(rawUsdzUrl, 'usdz')
         : finalGlbUrl;
 
       onProgress(100, 'Modelo 3D foto-realista pronto com suporte a Realidade Aumentada!');
@@ -201,13 +216,13 @@ export const ai3DService = {
         dishSuggestion: {
           name: 'Prato Especial em 3D',
           category: 'cat-01',
-          description: 'Modelo 3D multi-angular de alta fidelidade gerado por IA.',
+          description: 'Modelo 3D foto-realista gerado por IA com suporte a Realidade Aumentada.',
           estimatedPrice: 28.00,
           ingredients: ['Ingredientes selecionados'],
         },
         logs: [
           `Tripo3D Task ID: ${taskId}`,
-          `Processamento com ${optimizedImages.length} fotos angulares concluído`,
+          `Processamento com ${optimizedImages.length} foto(s) concluído`,
           'Dual WebAR: GLB (Android SceneViewer) + USDZ (Apple QuickLook)'
         ]
       };

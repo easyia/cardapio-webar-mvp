@@ -85,9 +85,7 @@ export const ModelViewer3D: React.FC<ModelViewer3DProps> = ({
     };
 
     const handleARStatus = (event: any) => {
-      if (event.detail?.status === 'failed') {
-        console.warn('AR launch status:', event.detail);
-      }
+      console.log('model-viewer ar-status:', event.detail?.status);
     };
 
     viewer.addEventListener('progress', handleProgress);
@@ -121,18 +119,18 @@ export const ModelViewer3D: React.FC<ModelViewer3DProps> = ({
     const isAndroid = /Android/i.test(navigator.userAgent);
     const isIOS = /iPhone|iPad|iPod/i.test(navigator.userAgent);
 
-    // 1. Try model-viewer standard activateAR first
-    if (viewer && typeof viewer.activateAR === 'function') {
-      try {
-        viewer.activateAR();
-        return;
-      } catch (err) {
-        console.warn('modelViewer.activateAR standard trigger error, using native protocol:', err);
-      }
-    }
-
-    // 2. iOS Native ARKit Quick Look
+    // 1. If on iOS (Apple iPhone / iPad) -> Trigger native AR Quick Look
     if (isIOS) {
+      // First try model-viewer native activateAR
+      if (viewer && typeof viewer.activateAR === 'function') {
+        try {
+          viewer.activateAR();
+        } catch (err) {
+          console.warn('activateAR iOS try error:', err);
+        }
+      }
+
+      // Explicit anchor fallback for iOS Safari
       const usdzUrl = dish.usdz_url || dish.model_3d_url;
       const fullUsdzUrl = usdzUrl.startsWith('http')
         ? usdzUrl
@@ -147,24 +145,37 @@ export const ModelViewer3D: React.FC<ModelViewer3DProps> = ({
       document.body.appendChild(anchor);
       anchor.click();
       setTimeout(() => {
-        document.body.removeChild(anchor);
-      }, 500);
+        if (document.body.contains(anchor)) {
+          document.body.removeChild(anchor);
+        }
+      }, 1000);
       return;
     }
 
-    // 3. Android Native ARCore Scene Viewer
+    // 2. If on Android -> Trigger Google Scene Viewer Intent
     if (isAndroid) {
+      if (viewer && typeof viewer.activateAR === 'function') {
+        try {
+          viewer.activateAR();
+        } catch (err) {
+          console.warn('activateAR Android try error:', err);
+        }
+      }
+
       const glbUrl = dish.model_3d_url.startsWith('http') 
         ? dish.model_3d_url 
         : `${window.location.origin}${dish.model_3d_url}`;
+      
       const sceneViewerUrl = `intent://arvr.google.com/scene-viewer/1.0?file=${encodeURIComponent(glbUrl)}&mode=ar_only&resizable=true&title=${encodeURIComponent(dish.name)}#Intent;scheme=https;package=com.google.android.googlequicksearchbox;action=android.intent.action.VIEW;end;`;
       window.location.href = sceneViewerUrl;
       return;
     }
 
-    // 4. Desktop Fallback: Open QR Code modal
+    // 3. If on desktop / laptop: open QR Code Modal for scanning with phone camera
     if (onOpenARModal) {
       onOpenARModal();
+    } else if (viewer && typeof viewer.activateAR === 'function') {
+      viewer.activateAR();
     }
   };
 

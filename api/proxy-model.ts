@@ -1,5 +1,5 @@
 // Vercel Serverless Function: Proxy 3D model files with correct MIME types and CORS headers
-// This ensures iOS Quick Look and Android Scene Viewer open files inline in AR instead of downloading them.
+// Supports base64 encoded URLs to prevent S3 signature query parameter truncation.
 
 export const config = {
   maxDuration: 30,
@@ -16,23 +16,40 @@ export default async function handler(req: any, res: any) {
     return res.status(200).end();
   }
 
-  const { url, format, name } = req.query;
+  const { url, b64, format, name } = req.query;
 
-  if (!url || typeof url !== 'string') {
-    return res.status(400).json({ error: 'URL do modelo não fornecida' });
+  let targetUrl = '';
+  if (b64 && typeof b64 === 'string') {
+    try {
+      targetUrl = Buffer.from(b64, 'base64').toString('utf-8');
+    } catch {
+      targetUrl = '';
+    }
+  }
+
+  if (!targetUrl && url && typeof url === 'string') {
+    targetUrl = decodeURIComponent(url);
+  }
+
+  if (!targetUrl) {
+    return res.status(400).json({ error: 'URL do modelo 3D não fornecida' });
   }
 
   try {
-    const targetUrl = decodeURIComponent(url);
-    const modelRes = await fetch(targetUrl);
+    const modelRes = await fetch(targetUrl, {
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (compatible; AuraMenuWebAR/3.0)',
+      },
+    });
 
     if (!modelRes.ok) {
+      console.error(`proxy-model error fetching targetUrl: ${modelRes.status} ${modelRes.statusText}`);
       return res.status(modelRes.status).json({
         error: `Erro ao buscar modelo remoto: ${modelRes.statusText}`,
       });
     }
 
-    const fileFormat = (format as string) || (targetUrl.endsWith('.usdz') ? 'usdz' : 'glb');
+    const fileFormat = (format as string) || (targetUrl.toLowerCase().includes('.usdz') ? 'usdz' : 'glb');
     const fileName = (name as string) || `model.${fileFormat}`;
 
     // Critical MIME Types for Native WebAR:
@@ -47,13 +64,13 @@ export default async function handler(req: any, res: any) {
       res.setHeader('Content-Disposition', `inline; filename="${fileName}"`);
     }
 
-    // Cache control for fast loading
+    // Cache control
     res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
 
     const arrayBuffer = await modelRes.arrayBuffer();
     return res.send(Buffer.from(arrayBuffer));
   } catch (error: any) {
-    console.error('API /proxy-model Error:', error);
+    console.error('API /proxy-model Exception:', error);
     return res.status(500).json({
       error: error.message || 'Erro ao retransmitir modelo 3D',
     });

@@ -8,12 +8,13 @@ import {
   Box, 
   ArrowRight, 
   Info, 
-  Key,
-  Plus,
-  Trash2,
-  Layers,
-  ShoppingBag,
-  Sliders
+  Key, 
+  Plus, 
+  Trash2, 
+  Layers, 
+  ShoppingBag, 
+  Sliders,
+  CheckCircle2
 } from 'lucide-react';
 import { ai3DService } from '../../services/ai3DService';
 import type { AI3DTaskResult } from '../../services/ai3DService';
@@ -32,7 +33,7 @@ export const AI3DScannerModal: React.FC<AI3DScannerModalProps> = ({
   onClose,
   onApply3DModel,
 }) => {
-  // Multiple images state (up to 4 angles for photogrammetry fidelity)
+  // Multiple images state (1 to 4 angles)
   const [images, setImages] = useState<string[]>([]);
   const [isGenerating, setIsGenerating] = useState(false);
   const [progress, setProgress] = useState(0);
@@ -83,7 +84,10 @@ export const AI3DScannerModal: React.FC<AI3DScannerModalProps> = ({
 
     setIsGenerating(true);
     setProgress(5);
-    setStatusText('Iniciando IA Generativa Multi-Angular...');
+    setStatusText(images.length === 1 
+      ? 'Iniciando IA Generativa a partir da sua foto...' 
+      : 'Iniciando IA Generativa Multi-Angular...'
+    );
 
     try {
       const result = await ai3DService.generate3DFromMultipleImages(images, (p, text) => {
@@ -180,14 +184,14 @@ export const AI3DScannerModal: React.FC<AI3DScannerModalProps> = ({
             <div>
               <div className="flex items-center gap-2">
                 <h3 className="text-lg font-black text-white font-heading">
-                  Estúdio IA: Multi-Fotos ➔ Modelo 3D Real
+                  Estúdio IA: Foto ➔ Modelo 3D & WebAR
                 </h3>
-                <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-400 border border-amber-500/40">
-                  Fidelidade 1:1
+                <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-400 border border-emerald-500/40">
+                  1 a 4 Fotos
                 </span>
               </div>
               <p className="text-xs text-[#A39E93]">
-                Envie de 1 a 4 fotos de ângulos diferentes para a IA reconstruir o prato na escala perfeita
+                Envie de 1 a 4 fotos (1 foto já funciona imediatamente!)
               </p>
             </div>
           </div>
@@ -244,19 +248,27 @@ export const AI3DScannerModal: React.FC<AI3DScannerModalProps> = ({
         {/* Content Area */}
         <div className="p-6 overflow-y-auto flex-1 space-y-6">
           
-          {/* STEP 1: Capture Multiple Photos */}
+          {/* STEP 1: Capture Photos */}
           {!generatedResult && !isGenerating && (
             <div className="space-y-5">
               
+              {/* Highlight Info Banner */}
+              <div className="p-3.5 bg-gradient-to-r from-amber-500/15 via-orange-500/10 to-[#0C0B0A] border border-amber-500/30 rounded-2xl flex items-center gap-3">
+                <CheckCircle2 className="w-5 h-5 text-amber-400 flex-shrink-0" />
+                <p className="text-xs text-slate-200 leading-relaxed">
+                  <strong className="text-amber-300">1 única foto já é suficiente</strong> para gerar o 3D! Adicionar mais ângulos (laterais e topo) é opcional para capturar detalhes 360°.
+                </p>
+              </div>
+
               {/* Photo Angles Grid (Up to 4 angles) */}
               <div>
                 <div className="flex items-center justify-between mb-2.5">
                   <label className="text-xs font-bold text-[#FAF8F5] uppercase tracking-wider flex items-center gap-1.5">
                     <Layers className="w-4 h-4 text-amber-400" />
-                    <span>Fotos do Produto ({images.length}/4 Ângulos)</span>
+                    <span>Fotos Selecionadas ({images.length}/4)</span>
                   </label>
-                  <span className="text-[11px] text-[#A39E93]">
-                    {images.length === 0 ? 'Mínimo 1 foto' : `${images.length} foto(s) selecionada(s)`}
+                  <span className="text-[11px] text-amber-400 font-bold">
+                    {images.length === 0 ? 'Tire ou selecione 1 foto' : `${images.length} foto(s) pronta(s)`}
                   </span>
                 </div>
 
@@ -264,9 +276,9 @@ export const AI3DScannerModal: React.FC<AI3DScannerModalProps> = ({
                   {/* Render Uploaded Photos */}
                   {images.map((img, index) => (
                     <div key={index} className="relative aspect-square rounded-2xl overflow-hidden border-2 border-amber-500/50 bg-[#0C0B0A] group">
-                      <img src={img} alt={`Ângulo ${index + 1}`} className="w-full h-full object-cover" />
+                      <img src={img} alt={`Foto ${index + 1}`} className="w-full h-full object-cover" />
                       <div className="absolute top-1.5 left-1.5 px-2 py-0.5 rounded-md bg-[#0C0B0A]/85 text-[10px] font-bold text-amber-300 border border-amber-500/30">
-                        {index === 0 ? 'Frente (45°)' : index === 1 ? 'Lado Dir.' : index === 2 ? 'Lado Esq.' : 'Topo (Cima)'}
+                        {index === 0 ? 'Foto Principal' : `Ângulo ${index + 1}`}
                       </div>
                       <button
                         onClick={() => handleRemovePhoto(index)}
@@ -288,10 +300,10 @@ export const AI3DScannerModal: React.FC<AI3DScannerModalProps> = ({
                         {images.length === 0 ? <Camera className="w-5 h-5" /> : <Plus className="w-5 h-5" />}
                       </div>
                       <span className="text-[11px] font-bold text-white leading-tight">
-                        {images.length === 0 ? 'Tirar 1ª Foto' : `Adicionar Ângulo ${images.length + 1}`}
+                        {images.length === 0 ? 'Tirar ou Enviar Foto' : `+ Outro Ângulo (Opcional)`}
                       </span>
                       <span className="text-[9px] text-[#A39E93] mt-0.5">
-                        {images.length === 0 ? 'Frente a 45°' : images.length === 1 ? 'Lateral 45°' : 'Topo ou Trás'}
+                        {images.length === 0 ? 'Câmera do celular' : 'Lateral ou Topo'}
                       </span>
                     </div>
                   )}
@@ -308,20 +320,20 @@ export const AI3DScannerModal: React.FC<AI3DScannerModalProps> = ({
                 className="hidden"
               />
 
-              {/* Angle guidance visual cards */}
+              {/* Guidance tips */}
               <div className="p-4 bg-[#0C0B0A] border border-[#1E1B18] rounded-2xl space-y-2">
                 <div className="flex items-center gap-2 text-xs font-bold text-amber-400 uppercase tracking-wider">
                   <Info className="w-4 h-4" />
-                  <span>Dica de Especialista para Fidelidade 100%:</span>
+                  <span>Dicas para melhor resultado 3D:</span>
                 </div>
-                <div className="grid grid-cols-2 gap-2 text-[11px] text-[#A39E93]">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-[11px] text-[#A39E93]">
                   <div className="bg-[#161412] p-2.5 rounded-xl border border-[#1E1B18]">
-                    <strong className="text-amber-300 block mb-0.5">1. Ângulo Frontal a 45°</strong>
-                    Mostre a altura da xícara/prato e o topo da comida.
+                    <strong className="text-amber-300 block mb-0.5">📸 Boa Iluminação</strong>
+                    Tire a foto em local bem iluminado, focando no prato ou xícara.
                   </div>
                   <div className="bg-[#161412] p-2.5 rounded-xl border border-[#1E1B18]">
-                    <strong className="text-amber-300 block mb-0.5">2. Ângulos Laterais & Topo</strong>
-                    Tire fotos dos lados para a IA capturar 360° sem distorção.
+                    <strong className="text-amber-300 block mb-0.5">📐 Ângulo a 45°</strong>
+                    Posicione o celular a 45 graus para pegar a altura e o topo da comida.
                   </div>
                 </div>
               </div>
