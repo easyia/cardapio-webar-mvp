@@ -82,7 +82,7 @@ export const ai3DService = {
     onProgress(15, 'Enviando imagem para a IA da Tripo3D...');
 
     try {
-      // 1. Call serverless backend endpoint
+      // 1. Call serverless backend endpoint to start image_to_model
       const response = await fetch('/api/generate-3d', {
         method: 'POST',
         headers: {
@@ -107,10 +107,13 @@ export const ai3DService = {
       }
 
       const taskId = data.taskId;
-      onProgress(30, 'IA calculando volumetria e geometria 3D...');
+      onProgress(25, 'IA calculando malha poligonal e profundidade...');
 
-      // 2. Poll task status until finished
+      // 2. Poll task status until GLB is ready
       let attempts = 0;
+      let rawGlbUrl = '';
+      let rawUsdzUrl = '';
+
       while (attempts < 60) {
         await new Promise(r => setTimeout(r, 2500));
         attempts++;
@@ -121,47 +124,88 @@ export const ai3DService = {
         const statusData = await statusRes.json();
 
         if (statusData.status === 'running' || statusData.status === 'queued') {
-          const p = Math.min(30 + attempts * 2.5, 90);
-          onProgress(p, `Sintetizando texturas PBR e profundidade (${Math.round(p)}%)...`);
+          const p = Math.min(25 + attempts * 2.5, 85);
+          onProgress(p, `Sintetizando texturas PBR e geometria (${Math.round(p)}%)...`);
         } else if (statusData.status === 'success') {
-          onProgress(95, 'Otimizando modelo para WebAR (Android & iOS)...');
-
-          const glbUrl =
+          rawGlbUrl =
             statusData.output?.pbr_model ||
             statusData.output?.model ||
             statusData.output?.base_model;
-          const usdzUrl = statusData.output?.usdz || glbUrl;
+          rawUsdzUrl = statusData.output?.usdz || '';
 
-          if (!glbUrl) {
-            throw new Error('A IA não retornou o arquivo .GLB do modelo.');
-          }
-
-          onProgress(100, 'Modelo 3D gerado com sucesso!');
-
-          return {
-            success: true,
-            modelGlbUrl: glbUrl,
-            modelUsdzUrl: usdzUrl,
-            previewImageUrl: optimizedImage,
-            dishSuggestion: {
-              name: 'Item Autoral em 3D',
-              category: 'cat-01',
-              description: 'Modelo 3D gerado por IA a partir da foto do produto.',
-              estimatedPrice: 24.00,
-              ingredients: ['Ingredientes selecionados'],
-            },
-            logs: [
-              `Tripo3D Task ID: ${taskId}`,
-              'Reconstrução 3D neural concluída com sucesso',
-              'Dual Engine AR: Compatível com Android (SceneViewer) e iOS (QuickLook)'
-            ]
-          };
+          break;
         } else if (statusData.status === 'failed') {
-          throw new Error('A IA da Tripo3D não conseguiu processar esta foto. Tente tirar uma foto mais nítida a 45°.');
+          throw new Error('A IA não conseguiu processar esta foto. Tente tirar uma foto mais nítida a 45°.');
         }
       }
 
-      throw new Error('Tempo limite de geração excedido (mais de 2 minutos).');
+      if (!rawGlbUrl) {
+        throw new Error('Tempo limite de geração excedido ou modelo GLB não retornado.');
+      }
+
+      onProgress(88, 'Preparando formatos para WebAR (Android & Apple Quick Look)...');
+
+      // 3. If USDZ was not returned directly, request USDZ conversion from Tripo
+      if (!rawUsdzUrl) {
+        try {
+          const convertRes = await fetch('/api/generate-3d', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              requestType: 'convert_usdz',
+              originalTaskId: taskId,
+              clientApiKey: apiKey || undefined,
+            }),
+          });
+          const convertData = await convertRes.json();
+          if (convertData.success && convertData.taskId) {
+            const convertTaskId = convertData.taskId;
+            // Poll conversion task (usually takes 5-10s)
+            let convAttempts = 0;
+            while (convAttempts < 15) {
+              await new Promise(r => setTimeout(r, 2000));
+              convAttempts++;
+              const convStatusRes = await fetch(
+                `/api/task-status?taskId=${encodeURIComponent(convertTaskId)}&clientApiKey=${encodeURIComponent(apiKey)}`
+              );
+              const convStatusData = await convStatusRes.json();
+              if (convStatusData.status === 'success') {
+                rawUsdzUrl = convStatusData.output?.model || convStatusData.output?.usdz || '';
+                break;
+              }
+            }
+          }
+        } catch (convErr) {
+          console.warn('USDZ conversion optional step warning:', convErr);
+        }
+      }
+
+      // Build safe WebAR proxy URLs with exact Content-Type headers
+      const finalGlbUrl = `/api/proxy-model?url=${encodeURIComponent(rawGlbUrl)}&format=glb&name=item.glb`;
+      const finalUsdzUrl = rawUsdzUrl
+        ? `/api/proxy-model?url=${encodeURIComponent(rawUsdzUrl)}&format=usdz&name=item.usdz`
+        : finalGlbUrl;
+
+      onProgress(100, 'Modelo 3D pronto com suporte a Realidade Aumentada!');
+
+      return {
+        success: true,
+        modelGlbUrl: finalGlbUrl,
+        modelUsdzUrl: finalUsdzUrl,
+        previewImageUrl: optimizedImage,
+        dishSuggestion: {
+          name: 'Item Autoral em 3D',
+          category: 'cat-01',
+          description: 'Modelo 3D gerado por IA a partir da foto do produto, pronto para projeção em Realidade Aumentada.',
+          estimatedPrice: 24.00,
+          ingredients: ['Ingredientes selecionados'],
+        },
+        logs: [
+          `Tripo3D Task ID: ${taskId}`,
+          'Reconstrução 3D neural concluída',
+          'Dual WebAR: GLB (Android SceneViewer) + USDZ (Apple QuickLook)'
+        ]
+      };
     } catch (err: any) {
       console.warn('Erro ao conectar com API:', err);
       throw new Error(err.message || 'Erro ao processar imagem 3D.');

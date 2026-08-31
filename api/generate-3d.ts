@@ -27,9 +27,9 @@ export default async function handler(req: any, res: any) {
   }
 
   try {
-    const { imageBase64, imageType, clientApiKey } = req.body || {};
+    const { imageBase64, imageType, clientApiKey, requestType, originalTaskId } = req.body || {};
 
-    // Get Tripo API Key
+    // Get Tripo API Key from environment or client
     const apiKey = 
       process.env.TRIPO_API_KEY || 
       process.env.VITE_TRIPO_API_KEY || 
@@ -37,22 +37,46 @@ export default async function handler(req: any, res: any) {
 
     if (!apiKey || !apiKey.trim()) {
       return res.status(400).json({ 
-        error: 'Chave da Tripo3D não encontrada. Configure TRIPO_API_KEY nas variáveis da Vercel.' 
+        error: 'Chave da Tripo3D não encontrada. Configure TRIPO_API_KEY nas variáveis de ambiente da Vercel.' 
       });
     }
 
+    // 1. If this is a USDZ conversion task request
+    if (requestType === 'convert_usdz' && originalTaskId) {
+      const convertRes = await fetch('https://api.tripo3d.ai/v2/openapi/task', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${apiKey.trim()}`,
+        },
+        body: JSON.stringify({
+          type: 'convert_model',
+          format: 'USDZ',
+          original_model_task_id: originalTaskId,
+        }),
+      });
+
+      const convertData = await convertRes.json();
+      if (convertData.code === 0 && convertData.data?.task_id) {
+        return res.status(200).json({
+          success: true,
+          taskId: convertData.data.task_id,
+          type: 'convert_usdz',
+        });
+      }
+    }
+
+    // 2. Standard image_to_model task request
     if (!imageBase64) {
       return res.status(400).json({ error: 'Nenhuma imagem foi enviada.' });
     }
 
-    // Clean base64 string
     const base64Data = imageBase64.includes('base64,')
       ? imageBase64.split('base64,')[1]
       : imageBase64;
 
     const fileFormat = imageType === 'image/jpeg' ? 'jpg' : (imageType || 'png');
 
-    // 1. Send task creation request to Tripo3D OpenAPI
     const tripoRes = await fetch('https://api.tripo3d.ai/v2/openapi/task', {
       method: 'POST',
       headers: {
@@ -80,6 +104,7 @@ export default async function handler(req: any, res: any) {
     return res.status(200).json({
       success: true,
       taskId: tripoData.data.task_id,
+      type: 'image_to_model',
     });
   } catch (error: any) {
     console.error('API /generate-3d Error:', error);

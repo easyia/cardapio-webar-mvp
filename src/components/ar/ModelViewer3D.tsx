@@ -78,6 +78,7 @@ export const ModelViewer3D: React.FC<ModelViewer3DProps> = ({
     };
   }, [dish.model_3d_url]);
 
+  // Direct 1-tap Native WebAR projection (Apple Quick Look / Android Scene Viewer)
   const handleLaunchAR = (e: React.MouseEvent) => {
     e.preventDefault();
     e.stopPropagation();
@@ -87,28 +88,48 @@ export const ModelViewer3D: React.FC<ModelViewer3DProps> = ({
     const isAndroid = /Android/i.test(navigator.userAgent);
     const isIOS = /iPhone|iPad|iPod/i.test(navigator.userAgent);
 
-    if (viewer && (viewer.canActivateAR || isAndroid || isIOS)) {
+    // 1. Try model-viewer standard activateAR first
+    if (viewer && typeof viewer.activateAR === 'function') {
       try {
-        if (typeof viewer.activateAR === 'function') {
-          viewer.activateAR();
-          return;
-        }
-      } catch (err) {
-        console.warn('modelViewer.activateAR error, attempting fallback:', err);
-      }
-
-      // Android Scene Viewer direct fallback
-      if (isAndroid) {
-        const glbUrl = dish.model_3d_url.startsWith('http') 
-          ? dish.model_3d_url 
-          : `${window.location.origin}${dish.model_3d_url}`;
-        const sceneViewerUrl = `intent://arvr.google.com/scene-viewer/1.0?file=${encodeURIComponent(glbUrl)}&mode=ar_only&resizable=false&title=${encodeURIComponent(dish.name)}#Intent;scheme=https;package=com.google.android.googlequicksearchbox;action=android.intent.action.VIEW;end;`;
-        window.location.href = sceneViewerUrl;
+        viewer.activateAR();
         return;
+      } catch (err) {
+        console.warn('modelViewer.activateAR standard trigger error, using native protocol:', err);
       }
     }
 
-    // Fallback: If on desktop or AR not directly triggerable, open QR Code modal for mobile scan
+    // 2. iOS Native ARKit Quick Look
+    if (isIOS) {
+      const usdzUrl = dish.usdz_url || dish.model_3d_url;
+      const fullUsdzUrl = usdzUrl.startsWith('http')
+        ? usdzUrl
+        : `${window.location.origin}${usdzUrl}`;
+
+      const anchor = document.createElement('a');
+      anchor.setAttribute('rel', 'ar');
+      anchor.setAttribute('href', fullUsdzUrl);
+      const img = document.createElement('img');
+      img.setAttribute('src', dish.image_url);
+      anchor.appendChild(img);
+      document.body.appendChild(anchor);
+      anchor.click();
+      setTimeout(() => {
+        document.body.removeChild(anchor);
+      }, 500);
+      return;
+    }
+
+    // 3. Android Native ARCore Scene Viewer
+    if (isAndroid) {
+      const glbUrl = dish.model_3d_url.startsWith('http') 
+        ? dish.model_3d_url 
+        : `${window.location.origin}${dish.model_3d_url}`;
+      const sceneViewerUrl = `intent://arvr.google.com/scene-viewer/1.0?file=${encodeURIComponent(glbUrl)}&mode=ar_only&resizable=false&title=${encodeURIComponent(dish.name)}#Intent;scheme=https;package=com.google.android.googlequicksearchbox;action=android.intent.action.VIEW;end;`;
+      window.location.href = sceneViewerUrl;
+      return;
+    }
+
+    // 4. Desktop Fallback: Open QR Code modal
     if (onOpenARModal) {
       onOpenARModal();
     }
@@ -155,7 +176,7 @@ export const ModelViewer3D: React.FC<ModelViewer3DProps> = ({
         ios-src={dish.usdz_url || undefined}
         alt={`Visualização 3D de ${dish.name}`}
         ar
-        ar-modes="webxr scene-viewer quick-look"
+        ar-modes="scene-viewer quick-look webxr"
         ar-scale="fixed"
         ar-placement="floor"
         camera-controls
@@ -175,7 +196,7 @@ export const ModelViewer3D: React.FC<ModelViewer3DProps> = ({
         max-camera-orbit="auto auto 200%"
         className="w-full h-full cursor-grab active:cursor-grabbing"
       >
-        {/* Native AR Button slot inside model-viewer */}
+        {/* Custom native AR button slot */}
         <button
           slot="ar-button"
           id="native-ar-btn"
@@ -183,7 +204,7 @@ export const ModelViewer3D: React.FC<ModelViewer3DProps> = ({
           aria-label="Abrir em Realidade Aumentada"
         />
 
-        {/* Slot Poster / Fallback */}
+        {/* Slot Poster / Loading State */}
         <div slot="poster" className="absolute inset-0 flex items-center justify-center bg-slate-900">
           <img 
             src={dish.image_url} 
@@ -214,7 +235,7 @@ export const ModelViewer3D: React.FC<ModelViewer3DProps> = ({
         <div className="absolute inset-0 flex flex-col items-center justify-center bg-slate-950/90 p-6 text-center">
           <img src={dish.image_url} alt={dish.name} className="w-24 h-24 object-cover rounded-xl mb-3 shadow-lg border border-slate-700" />
           <p className="text-sm font-semibold text-slate-200">Visualização 3D em processamento</p>
-          <p className="text-xs text-slate-400 mt-1 max-w-xs">Exibindo imagem do prato. Você ainda pode projetar em AR no seu celular.</p>
+          <p className="text-xs text-slate-400 mt-1 max-w-xs">Exibindo imagem do prato. Toque abaixo para projetar em AR.</p>
         </div>
       )}
 
@@ -266,7 +287,7 @@ export const ModelViewer3D: React.FC<ModelViewer3DProps> = ({
         </button>
       </div>
 
-      {/* Floating Viewport Controls (Side/Bottom) */}
+      {/* Floating Viewport Controls */}
       {showControls && (
         <div className="absolute right-3 top-14 flex flex-col gap-2 z-10">
           <button

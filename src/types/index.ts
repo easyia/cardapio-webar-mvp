@@ -34,6 +34,7 @@ export interface Dish {
   image_url: string;
   model_3d_url: string;
   usdz_url?: string;
+  ar_ready?: boolean;
   is_active: boolean;
   is_featured?: boolean;
   is_chef_special?: boolean;

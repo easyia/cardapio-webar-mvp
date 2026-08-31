@@ -50,7 +50,7 @@ export default async function handler(req: any, res: any) {
       success: true,
       status: taskData.status, // 'queued' | 'running' | 'success' | 'failed'
       progress: taskData.progress || 0,
-      output: taskData.output,
+      output: taskData.output || {},
     });
   } catch (error: any) {
     console.error('API /task-status Error:', error);

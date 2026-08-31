@@ -89,8 +89,10 @@ export function App() {
   const handleTriggerAR = (dish: Dish) => {
     const isMobile = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
     if (isMobile) {
-      setLiveCameraDish(dish);
+      // On mobile, open dish detail with 3D model & 1-tap native ARKit/SceneViewer
+      setSelectedDishDetail(dish);
     } else {
+      // On desktop, show QR code modal
       setArPromptDish(dish);
     }
   };
