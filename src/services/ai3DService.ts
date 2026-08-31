@@ -1,4 +1,4 @@
-// AI 3D Generation Service (Tripo3D & Meshy API integration + Neural Food Fallbacks)
+// AI 3D Generation Service (Tripo3D & Meshy API integration with Vercel Environment Variables support)
 
 export interface AI3DTaskResult {
   success: boolean;
@@ -19,8 +19,21 @@ const API_CONFIG_KEY = 'auramenu_ai3d_api_key';
 const API_PROVIDER_KEY = 'auramenu_ai3d_provider'; // 'tripo' | 'meshy' | 'demo'
 
 export const ai3DService = {
+  /**
+   * Retrieves API key from localStorage or Vercel Environment Variables (VITE_TRIPO_API_KEY / VITE_MESHY_API_KEY)
+   */
   getApiKey(): string {
-    return localStorage.getItem(API_CONFIG_KEY) || '';
+    const localKey = localStorage.getItem(API_CONFIG_KEY);
+    if (localKey && localKey.trim()) return localKey.trim();
+
+    // Vercel / Vite Environment Variables
+    const envTripoKey = import.meta.env.VITE_TRIPO_API_KEY;
+    if (envTripoKey && envTripoKey.trim()) return envTripoKey.trim();
+
+    const envMeshyKey = import.meta.env.VITE_MESHY_API_KEY;
+    if (envMeshyKey && envMeshyKey.trim()) return envMeshyKey.trim();
+
+    return '';
   },
 
   setApiKey(key: string, provider: 'tripo' | 'meshy' | 'demo' = 'tripo'): void {
@@ -29,7 +42,14 @@ export const ai3DService = {
   },
 
   getProvider(): string {
-    return localStorage.getItem(API_PROVIDER_KEY) || 'tripo';
+    const localProvider = localStorage.getItem(API_PROVIDER_KEY);
+    if (localProvider) return localProvider;
+
+    if (import.meta.env.VITE_MESHY_API_KEY && !import.meta.env.VITE_TRIPO_API_KEY) {
+      return 'meshy';
+    }
+
+    return import.meta.env.VITE_AI3D_PROVIDER || 'tripo';
   },
 
   /**
@@ -42,7 +62,7 @@ export const ai3DService = {
     const apiKey = this.getApiKey();
     const provider = this.getProvider();
 
-    // If real Tripo3D API Key is provided
+    // If real Tripo3D API Key is provided (either in Vercel env or localStorage)
     if (apiKey && (provider === 'tripo' || !provider)) {
       try {
         return await this.generateWithTripo(imageDataUrl, apiKey, onProgress);
@@ -194,7 +214,7 @@ export const ai3DService = {
   },
 
   /**
-   * Neural Food Generation (Produces photorealistic food assets with realistic steps)
+   * Neural Food Generation Fallback
    */
   async generateWithSandboxAI(
     imageDataUrl: string,
