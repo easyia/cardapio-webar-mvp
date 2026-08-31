@@ -1,4 +1,4 @@
-// Vercel Serverless Function: Proxy to Tripo3D API (Supports Ultra HD v2.5 Neural Model, Multi-View, Refinement and PBR Textures)
+// Vercel Serverless Function: Proxy to Tripo3D API (Supports Gastronomy Presets, Ultra HD v2.5 Neural Engine, Multi-View, Refinement and PBR Textures)
 export const config = {
   api: {
     bodyParser: {
@@ -34,8 +34,9 @@ export default async function handler(req: any, res: any) {
       clientApiKey, 
       requestType, 
       originalTaskId,
-      enableRefine,
-      quality = 'ultra'
+      quality = 'ultra',
+      gastronomyPrompt,
+      gastronomyCategory
     } = req.body || {};
 
     // Get Tripo API Key
@@ -99,7 +100,7 @@ export default async function handler(req: any, res: any) {
       }
     }
 
-    // 3. Multi-view Photogrammetry (Multi-photo for high-fidelity food, caps, drones, complex objects)
+    // 3. Multi-view Photogrammetry (Multi-photo for high-fidelity food dishes)
     if (Array.isArray(imagesBase64) && imagesBase64.length > 1) {
       const formattedFiles = imagesBase64.map((b64: string) => {
         const cleanB64 = b64.includes('base64,') ? b64.split('base64,')[1] : b64;
@@ -113,6 +114,7 @@ export default async function handler(req: any, res: any) {
         type: 'multiview_to_model',
         model_version: 'v2.5-20250123',
         files: formattedFiles,
+        prompt: gastronomyPrompt || undefined,
         params: {
           texture: true,
           pbr: true,
@@ -139,13 +141,14 @@ export default async function handler(req: any, res: any) {
           taskId: tripoMultiData.data.task_id,
           type: 'multiview_to_model',
           viewsCount: imagesBase64.length,
+          gastronomyCategory,
         });
       }
 
       console.warn('Multiview fallback to single image:', tripoMultiData);
     }
 
-    // 4. Single Image to 3D Model Task with Ultra HD v2.5 Engine
+    // 4. Single Image to 3D Model Task with Gastronomy Neural Optimization
     const primaryImage = imageBase64 || (Array.isArray(imagesBase64) ? imagesBase64[0] : null);
 
     if (!primaryImage) {
@@ -165,6 +168,7 @@ export default async function handler(req: any, res: any) {
         type: fileFormat,
         data: base64Data,
       },
+      prompt: gastronomyPrompt || undefined,
       params: {
         texture: true,
         pbr: true,
@@ -186,7 +190,7 @@ export default async function handler(req: any, res: any) {
     const tripoData = await tripoRes.json();
 
     if (tripoData.code !== 0 || !tripoData.data?.task_id) {
-      // Fallback without model_version if specific model version is constrained by plan
+      // Fallback without model_version if restricted
       const fallbackRes = await fetch('https://api.tripo3d.ai/v2/openapi/task', {
         method: 'POST',
         headers: {
@@ -214,6 +218,7 @@ export default async function handler(req: any, res: any) {
         success: true,
         taskId: fallbackData.data.task_id,
         type: 'image_to_model',
+        gastronomyCategory,
       });
     }
 
@@ -221,6 +226,7 @@ export default async function handler(req: any, res: any) {
       success: true,
       taskId: tripoData.data.task_id,
       type: 'image_to_model',
+      gastronomyCategory,
     });
   } catch (error: any) {
     console.error('API /generate-3d Error:', error);
