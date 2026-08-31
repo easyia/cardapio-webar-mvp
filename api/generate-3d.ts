@@ -1,5 +1,10 @@
-// Vercel Serverless Function: Proxy to Tripo3D API (Avoids Browser CORS and securely handles Image-to-3D)
+// Vercel Serverless Function: Proxy to Tripo3D API
 export const config = {
+  api: {
+    bodyParser: {
+      sizeLimit: '10mb',
+    },
+  },
   maxDuration: 60,
 };
 
@@ -18,21 +23,21 @@ export default async function handler(req: any, res: any) {
   }
 
   if (req.method !== 'POST') {
-    return res.status(405).json({ error: 'Method not allowed' });
+    return res.status(405).json({ error: 'Método não permitido' });
   }
 
   try {
     const { imageBase64, imageType, clientApiKey } = req.body || {};
 
-    // Get Tripo API Key from Vercel Server Environment Variables or Client Override
+    // Get Tripo API Key
     const apiKey = 
       process.env.TRIPO_API_KEY || 
       process.env.VITE_TRIPO_API_KEY || 
       clientApiKey;
 
-    if (!apiKey) {
+    if (!apiKey || !apiKey.trim()) {
       return res.status(400).json({ 
-        error: 'Chave de API da Tripo3D não encontrada. Configure TRIPO_API_KEY na Vercel ou insira no aplicativo.' 
+        error: 'Chave da Tripo3D não encontrada. Configure TRIPO_API_KEY nas variáveis da Vercel.' 
       });
     }
 
@@ -45,7 +50,7 @@ export default async function handler(req: any, res: any) {
       ? imageBase64.split('base64,')[1]
       : imageBase64;
 
-    const fileFormat = imageType || 'png';
+    const fileFormat = imageType === 'image/jpeg' ? 'jpg' : (imageType || 'png');
 
     // 1. Send task creation request to Tripo3D OpenAPI
     const tripoRes = await fetch('https://api.tripo3d.ai/v2/openapi/task', {
@@ -67,7 +72,7 @@ export default async function handler(req: any, res: any) {
 
     if (tripoData.code !== 0 || !tripoData.data?.task_id) {
       return res.status(400).json({
-        error: tripoData.message || 'Erro ao iniciar tarefa na Tripo3D',
+        error: tripoData.message || 'Erro ao processar imagem na Tripo3D',
         details: tripoData,
       });
     }
