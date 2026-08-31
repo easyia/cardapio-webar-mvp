@@ -1,4 +1,4 @@
-// AI 3D Generation Service (Client image compressor + Vercel Serverless proxy)
+// AI 3D Generation Service (Multi-view photogrammetry + Client image compressor + Vercel Serverless proxy)
 
 export interface AI3DTaskResult {
   success: boolean;
@@ -17,7 +17,7 @@ export interface AI3DTaskResult {
 
 const API_CONFIG_KEY = 'auramenu_ai3d_api_key';
 
-// Helper to resize large smartphone photos (e.g. 12MP 4000x3000 -> 1024x1024) to keep uploads under 300KB
+// Helper to resize large smartphone photos to keep uploads under 250KB each
 async function optimizeImageFor3D(dataUrl: string, maxDimension = 1024): Promise<string> {
   return new Promise((resolve) => {
     const img = new Image();
@@ -42,7 +42,7 @@ async function optimizeImageFor3D(dataUrl: string, maxDimension = 1024): Promise
         ctx.fillStyle = '#ffffff';
         ctx.fillRect(0, 0, width, height);
         ctx.drawImage(img, 0, 0, width, height);
-        resolve(canvas.toDataURL('image/jpeg', 0.88));
+        resolve(canvas.toDataURL('image/jpeg', 0.85));
       } else {
         resolve(dataUrl);
       }
@@ -68,28 +68,33 @@ export const ai3DService = {
   },
 
   /**
-   * Generates a 3D model from an image file/URL
+   * Generates a 3D model from multiple photos (Multi-View Photogrammetry for maximum fidelity)
    */
-  async generate3DFromImage(
-    rawImageDataUrl: string,
+  async generate3DFromMultipleImages(
+    rawImages: string[],
     onProgress: (percent: number, statusText: string) => void
   ): Promise<AI3DTaskResult> {
+    if (!rawImages.length) {
+      throw new Error('Nenhuma foto foi fornecida.');
+    }
+
     const apiKey = this.getApiKey();
 
-    onProgress(5, 'Otimizando imagem para reconstrução 3D...');
-    const optimizedImage = await optimizeImageFor3D(rawImageDataUrl, 1024);
+    onProgress(5, `Otimizando ${rawImages.length} fotos do produto para reconstrução volumétrica...`);
+    const optimizedImages = await Promise.all(rawImages.map(img => optimizeImageFor3D(img, 1024)));
 
-    onProgress(15, 'Enviando imagem para a IA da Tripo3D...');
+    onProgress(15, `Enviando ${optimizedImages.length} ângulos para o cluster neural da Tripo3D...`);
 
     try {
-      // 1. Call serverless backend endpoint to start image_to_model
+      // 1. Call serverless backend endpoint with multi-image array
       const response = await fetch('/api/generate-3d', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          imageBase64: optimizedImage,
+          imagesBase64: optimizedImages,
+          imageBase64: optimizedImages[0],
           imageType: 'jpg',
           clientApiKey: apiKey || undefined,
         }),
@@ -107,14 +112,15 @@ export const ai3DService = {
       }
 
       const taskId = data.taskId;
-      onProgress(25, 'IA calculando malha poligonal e profundidade...');
+      const isMulti = data.type === 'multiview_to_model';
+      onProgress(25, isMulti ? 'IA cruzando múltiplos ângulos para fidelidade fotográfica 1:1...' : 'IA calculando malha poligonal e profundidade...');
 
       // 2. Poll task status until GLB is ready
       let attempts = 0;
       let rawGlbUrl = '';
       let rawUsdzUrl = '';
 
-      while (attempts < 60) {
+      while (attempts < 65) {
         await new Promise(r => setTimeout(r, 2500));
         attempts++;
 
@@ -124,8 +130,8 @@ export const ai3DService = {
         const statusData = await statusRes.json();
 
         if (statusData.status === 'running' || statusData.status === 'queued') {
-          const p = Math.min(25 + attempts * 2.5, 85);
-          onProgress(p, `Sintetizando texturas PBR e geometria (${Math.round(p)}%)...`);
+          const p = Math.min(25 + attempts * 2.2, 85);
+          onProgress(p, `Sintetizando texturas PBR, relevo e reflexos (${Math.round(p)}%)...`);
         } else if (statusData.status === 'success') {
           rawGlbUrl =
             statusData.output?.pbr_model ||
@@ -135,7 +141,7 @@ export const ai3DService = {
 
           break;
         } else if (statusData.status === 'failed') {
-          throw new Error('A IA não conseguiu processar esta foto. Tente tirar uma foto mais nítida a 45°.');
+          throw new Error('A IA não conseguiu processar estas fotos. Tente tirar fotos mais nítidas com boa iluminação.');
         }
       }
 
@@ -145,7 +151,7 @@ export const ai3DService = {
 
       onProgress(88, 'Preparando formatos para WebAR (Android & Apple Quick Look)...');
 
-      // 3. If USDZ was not returned directly, request USDZ conversion from Tripo
+      // 3. Request USDZ conversion if not returned directly
       if (!rawUsdzUrl) {
         try {
           const convertRes = await fetch('/api/generate-3d', {
@@ -160,7 +166,6 @@ export const ai3DService = {
           const convertData = await convertRes.json();
           if (convertData.success && convertData.taskId) {
             const convertTaskId = convertData.taskId;
-            // Poll conversion task (usually takes 5-10s)
             let convAttempts = 0;
             while (convAttempts < 15) {
               await new Promise(r => setTimeout(r, 2000));
@@ -180,29 +185,29 @@ export const ai3DService = {
         }
       }
 
-      // Build safe WebAR proxy URLs with exact Content-Type headers
+      // Build safe WebAR proxy URLs
       const finalGlbUrl = `/api/proxy-model?url=${encodeURIComponent(rawGlbUrl)}&format=glb&name=item.glb`;
       const finalUsdzUrl = rawUsdzUrl
         ? `/api/proxy-model?url=${encodeURIComponent(rawUsdzUrl)}&format=usdz&name=item.usdz`
         : finalGlbUrl;
 
-      onProgress(100, 'Modelo 3D pronto com suporte a Realidade Aumentada!');
+      onProgress(100, 'Modelo 3D foto-realista pronto com suporte a Realidade Aumentada!');
 
       return {
         success: true,
         modelGlbUrl: finalGlbUrl,
         modelUsdzUrl: finalUsdzUrl,
-        previewImageUrl: optimizedImage,
+        previewImageUrl: optimizedImages[0],
         dishSuggestion: {
-          name: 'Item Autoral em 3D',
+          name: 'Prato Especial em 3D',
           category: 'cat-01',
-          description: 'Modelo 3D gerado por IA a partir da foto do produto, pronto para projeção em Realidade Aumentada.',
-          estimatedPrice: 24.00,
+          description: 'Modelo 3D multi-angular de alta fidelidade gerado por IA.',
+          estimatedPrice: 28.00,
           ingredients: ['Ingredientes selecionados'],
         },
         logs: [
           `Tripo3D Task ID: ${taskId}`,
-          'Reconstrução 3D neural concluída',
+          `Processamento com ${optimizedImages.length} fotos angulares concluído`,
           'Dual WebAR: GLB (Android SceneViewer) + USDZ (Apple QuickLook)'
         ]
       };
@@ -210,5 +215,15 @@ export const ai3DService = {
       console.warn('Erro ao conectar com API:', err);
       throw new Error(err.message || 'Erro ao processar imagem 3D.');
     }
+  },
+
+  /**
+   * Single image generation fallback
+   */
+  async generate3DFromImage(
+    rawImageDataUrl: string,
+    onProgress: (percent: number, statusText: string) => void
+  ): Promise<AI3DTaskResult> {
+    return this.generate3DFromMultipleImages([rawImageDataUrl], onProgress);
   }
 };

@@ -6,20 +6,24 @@ import {
   Check, 
   Loader2, 
   Box, 
-  RotateCw, 
   ArrowRight, 
   Info, 
-  Key 
+  Key,
+  Plus,
+  Trash2,
+  Layers,
+  ShoppingBag
 } from 'lucide-react';
 import { ai3DService } from '../../services/ai3DService';
 import type { AI3DTaskResult } from '../../services/ai3DService';
 import { ModelViewer3D } from '../ar/ModelViewer3D';
-import type { Dish } from '../../types';
+import type { Dish, Category } from '../../types';
+import { storeService } from '../../services/storeService';
 
 interface AI3DScannerModalProps {
   isOpen: boolean;
   onClose: () => void;
-  onApply3DModel: (result: AI3DTaskResult) => void;
+  onApply3DModel?: (result: AI3DTaskResult) => void;
 }
 
 export const AI3DScannerModal: React.FC<AI3DScannerModalProps> = ({
@@ -27,7 +31,8 @@ export const AI3DScannerModal: React.FC<AI3DScannerModalProps> = ({
   onClose,
   onApply3DModel,
 }) => {
-  const [selectedImage, setSelectedImage] = useState<string | null>(null);
+  // Multiple images state (up to 4 angles for photogrammetry fidelity)
+  const [images, setImages] = useState<string[]>([]);
   const [isGenerating, setIsGenerating] = useState(false);
   const [progress, setProgress] = useState(0);
   const [statusText, setStatusText] = useState('');
@@ -35,39 +40,63 @@ export const AI3DScannerModal: React.FC<AI3DScannerModalProps> = ({
   const [apiKey, setApiKey] = useState(ai3DService.getApiKey());
   const [showApiKeySettings, setShowApiKeySettings] = useState(false);
 
+  // Quick publish form fields inside the modal
+  const [dishName, setDishName] = useState('');
+  const [dishPrice, setDishPrice] = useState('24.00');
+  const [dishCategory, setDishCategory] = useState('');
+  const [dishDescription, setDishDescription] = useState('');
+  const [publishedSuccess, setPublishedSuccess] = useState(false);
+
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const categories: Category[] = storeService.getCategories();
 
   if (!isOpen) return null;
 
-  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (file) {
+  const handleAddPhotos = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(e.target.files || []);
+    if (!files.length) return;
+
+    files.forEach(file => {
       const reader = new FileReader();
       reader.onload = () => {
-        setSelectedImage(reader.result as string);
+        setImages(prev => {
+          if (prev.length >= 4) return prev;
+          return [...prev, reader.result as string];
+        });
         setGeneratedResult(null);
       };
       reader.readAsDataURL(file);
-    }
+    });
+  };
+
+  const handleRemovePhoto = (index: number) => {
+    setImages(prev => prev.filter((_, i) => i !== index));
+    setGeneratedResult(null);
   };
 
   const handleStartGeneration = async () => {
-    if (!selectedImage) return;
+    if (!images.length) return;
 
     setIsGenerating(true);
     setProgress(5);
-    setStatusText('Iniciando IA Generativa 3D...');
+    setStatusText('Iniciando IA Generativa Multi-Angular...');
 
     try {
-      const result = await ai3DService.generate3DFromImage(selectedImage, (p, text) => {
+      const result = await ai3DService.generate3DFromMultipleImages(images, (p, text) => {
         setProgress(p);
         setStatusText(text);
       });
 
       setGeneratedResult(result);
+      if (result.dishSuggestion) {
+        setDishName(result.dishSuggestion.name);
+        setDishPrice(result.dishSuggestion.estimatedPrice.toString());
+        setDishDescription(result.dishSuggestion.description);
+        setDishCategory(categories[0]?.id || 'cat-01');
+      }
       setIsGenerating(false);
     } catch (err: any) {
-      alert(`Erro na geração 3D: ${err.message || 'Tente novamente com outra foto.'}`);
+      alert(`Erro na geração 3D: ${err.message || 'Tente novamente com fotos mais nítidas.'}`);
       setIsGenerating(false);
     }
   };
@@ -78,18 +107,55 @@ export const AI3DScannerModal: React.FC<AI3DScannerModalProps> = ({
     alert('Chave de API salva com sucesso!');
   };
 
+  // 1-Click Direct Publish to Menu
+  const handleDirectPublish = () => {
+    if (!generatedResult) return;
+
+    const newDish: Omit<Dish, 'id' | 'created_at'> = {
+      restaurant_id: storeService.getRestaurant().id,
+      category_id: dishCategory || categories[0]?.id || 'cat-01',
+      name: dishName.trim() || 'Prato Autoral em 3D',
+      description: dishDescription.trim() || 'Modelo 3D foto-realista gerado por IA com suporte a Realidade Aumentada.',
+      price: parseFloat(dishPrice.replace(',', '.')) || 24.00,
+      image_url: generatedResult.previewImageUrl,
+      model_3d_url: generatedResult.modelGlbUrl,
+      usdz_url: generatedResult.modelUsdzUrl,
+      is_active: true,
+      is_featured: true,
+      is_chef_special: true,
+      ar_ready: true,
+      portion_size: '220g / 250ml',
+      preparation_time: '5 min',
+      calories: 190,
+      ingredients: generatedResult.dishSuggestion?.ingredients || ['Ingredientes selecionados'],
+    };
+
+    storeService.addDish(newDish);
+    setPublishedSuccess(true);
+
+    if (onApply3DModel) {
+      onApply3DModel(generatedResult);
+    }
+
+    setTimeout(() => {
+      setPublishedSuccess(false);
+      onClose();
+    }, 1200);
+  };
+
   // Sample dummy dish for inspecting generated 3D model
   const inspectionDish: Dish | null = generatedResult ? {
     id: 'generated-temp',
-    category_id: 'cat-01',
+    category_id: dishCategory || 'cat-01',
     restaurant_id: 'rest-01',
-    name: 'Modelo 3D Gerado por IA',
-    description: 'Visualização 3D gerada automaticamente a partir da foto do produto.',
-    price: 25.00,
+    name: dishName || 'Modelo 3D Gerado por IA',
+    description: dishDescription || 'Visualização 3D gerada automaticamente a partir das fotos do produto.',
+    price: parseFloat(dishPrice.replace(',', '.')) || 24.00,
     image_url: generatedResult.previewImageUrl,
     model_3d_url: generatedResult.modelGlbUrl,
     usdz_url: generatedResult.modelUsdzUrl,
     is_active: true,
+    ar_ready: true,
     created_at: new Date().toISOString(),
   } : null;
 
@@ -108,14 +174,14 @@ export const AI3DScannerModal: React.FC<AI3DScannerModalProps> = ({
             <div>
               <div className="flex items-center gap-2">
                 <h3 className="text-lg font-black text-white font-heading">
-                  Estúdio IA: Foto ➔ Modelo 3D & WebAR
+                  Estúdio IA: Multi-Fotos ➔ Modelo 3D Real
                 </h3>
                 <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-orange-500/20 text-orange-400 border border-orange-500/40">
-                  v1.0 Produção
+                  Fidelidade 1:1
                 </span>
               </div>
               <p className="text-xs text-slate-400">
-                Tire uma foto do café/prato para gerar a malha 3D volumétrica em segundos
+                Envie de 1 a 4 fotos de ângulos diferentes para a IA reconstruir o prato idêntico ao real
               </p>
             </div>
           </div>
@@ -124,7 +190,7 @@ export const AI3DScannerModal: React.FC<AI3DScannerModalProps> = ({
             <button
               onClick={() => setShowApiKeySettings(!showApiKeySettings)}
               className="p-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-white transition-colors"
-              title="Configurar Chave de API de IA (Tripo3D / Meshy)"
+              title="Configurar Chave de API de IA"
             >
               <Key className="w-4 h-4" />
             </button>
@@ -144,12 +210,12 @@ export const AI3DScannerModal: React.FC<AI3DScannerModalProps> = ({
             <div className="flex items-center justify-between">
               <span className="text-xs font-bold text-white uppercase tracking-wider flex items-center gap-1.5">
                 <Key className="w-3.5 h-3.5 text-orange-400" />
-                <span>Configuração de API de IA 3D (Opcional)</span>
+                <span>Chave Tripo3D API</span>
               </span>
-              <span className="text-[10px] text-emerald-400">Sandbox Ativa</span>
+              <span className="text-[10px] text-emerald-400">Serverless Ativo</span>
             </div>
             <p className="text-[11px] text-slate-400 leading-relaxed">
-              O sistema possui um cluster neural embutido para testes imediatos. Se desejar usar sua própria conta da <strong>Tripo3D</strong> ou <strong>Meshy.ai</strong>, insira sua API Key abaixo:
+              Você pode configurar a chave <code>TRIPO_API_KEY</code> diretamente na Vercel ou colar sua chave da Tripo3D abaixo:
             </p>
             <div className="flex gap-2">
               <input
@@ -172,81 +238,86 @@ export const AI3DScannerModal: React.FC<AI3DScannerModalProps> = ({
         {/* Content Area */}
         <div className="p-6 overflow-y-auto flex-1 space-y-6">
           
-          {/* STEP 1: Capture or Select Photo */}
+          {/* STEP 1: Capture Multiple Photos */}
           {!generatedResult && !isGenerating && (
             <div className="space-y-5">
               
-              {/* Photo Preview or Upload Zone */}
-              {selectedImage ? (
-                <div className="relative aspect-video max-h-72 w-full rounded-2xl overflow-hidden border-2 border-orange-500/40 shadow-xl bg-slate-950">
-                  <img
-                    src={selectedImage}
-                    alt="Foto selecionada"
-                    className="w-full h-full object-contain"
-                  />
+              {/* Photo Angles Grid (Up to 4 angles) */}
+              <div>
+                <div className="flex items-center justify-between mb-2.5">
+                  <label className="text-xs font-bold text-slate-300 uppercase tracking-wider flex items-center gap-1.5">
+                    <Layers className="w-4 h-4 text-orange-400" />
+                    <span>Fotos do Produto ({images.length}/4 Ângulos)</span>
+                  </label>
+                  <span className="text-[11px] text-slate-400">
+                    {images.length === 0 ? 'Mínimo 1 foto' : `${images.length} foto(s) selecionada(s)`}
+                  </span>
+                </div>
 
-                  {/* Reticle Guide Overlay */}
-                  <div className="absolute inset-0 border border-orange-500/20 rounded-2xl pointer-events-none flex items-center justify-center">
-                    <div className="w-48 h-48 border-2 border-dashed border-orange-400/40 rounded-full animate-pulse-subtle flex items-center justify-center">
-                      <span className="text-[10px] bg-slate-950/80 px-2 py-0.5 rounded-full text-orange-300 font-bold">
-                        Ângulo 45° Ideal
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                  {/* Render Uploaded Photos */}
+                  {images.map((img, index) => (
+                    <div key={index} className="relative aspect-square rounded-2xl overflow-hidden border-2 border-orange-500/50 bg-slate-950 group">
+                      <img src={img} alt={`Ângulo ${index + 1}`} className="w-full h-full object-cover" />
+                      <div className="absolute top-1.5 left-1.5 px-2 py-0.5 rounded-md bg-slate-950/80 text-[10px] font-bold text-orange-300 border border-orange-500/30">
+                        {index === 0 ? 'Frente (45°)' : index === 1 ? 'Lado Dir.' : index === 2 ? 'Lado Esq.' : 'Topo (Cima)'}
+                      </div>
+                      <button
+                        onClick={() => handleRemovePhoto(index)}
+                        className="absolute top-1.5 right-1.5 p-1 rounded-lg bg-rose-950/90 text-rose-300 hover:text-white border border-rose-600 transition-colors shadow-md"
+                        title="Remover foto"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+                  ))}
+
+                  {/* Add More Photos Slot */}
+                  {images.length < 4 && (
+                    <div
+                      onClick={() => fileInputRef.current?.click()}
+                      className="aspect-square rounded-2xl border-2 border-dashed border-slate-700 hover:border-orange-500 bg-slate-950/60 hover:bg-slate-950 flex flex-col items-center justify-center p-3 text-center cursor-pointer transition-all group"
+                    >
+                      <div className="w-10 h-10 rounded-xl bg-orange-500/10 text-orange-400 border border-orange-500/30 flex items-center justify-center mb-1.5 group-hover:scale-110 transition-transform">
+                        {images.length === 0 ? <Camera className="w-5 h-5" /> : <Plus className="w-5 h-5" />}
+                      </div>
+                      <span className="text-[11px] font-bold text-white leading-tight">
+                        {images.length === 0 ? 'Tirar 1ª Foto' : `Adicionar Ângulo ${images.length + 1}`}
+                      </span>
+                      <span className="text-[9px] text-slate-400 mt-0.5">
+                        {images.length === 0 ? 'Frente a 45°' : images.length === 1 ? 'Lateral 45°' : 'Topo ou Trás'}
                       </span>
                     </div>
-                  </div>
-
-                  <button
-                    onClick={() => setSelectedImage(null)}
-                    className="absolute top-3 right-3 p-2 rounded-xl bg-slate-900/90 text-slate-300 hover:text-white border border-slate-700 shadow-lg text-xs font-semibold flex items-center gap-1"
-                  >
-                    <RotateCw className="w-3.5 h-3.5" />
-                    <span>Trocar Foto</span>
-                  </button>
+                  )}
                 </div>
-              ) : (
-                <div 
-                  onClick={() => fileInputRef.current?.click()}
-                  className="aspect-video max-h-64 w-full rounded-2xl border-2 border-dashed border-slate-700 hover:border-orange-500 bg-slate-950/60 hover:bg-slate-950 flex flex-col items-center justify-center p-6 text-center cursor-pointer transition-all group"
-                >
-                  <div className="w-16 h-16 rounded-2xl bg-orange-500/10 text-orange-400 border border-orange-500/30 flex items-center justify-center mb-3 group-hover:scale-110 transition-transform">
-                    <Camera className="w-8 h-8" />
-                  </div>
-                  <h4 className="text-sm font-bold text-white font-heading">
-                    Tire uma Foto ou Faça Upload do Produto
-                  </h4>
-                  <p className="text-xs text-slate-400 mt-1 max-w-xs">
-                    Toque para abrir a câmera do smartphone ou selecionar uma foto da galeria
-                  </p>
-                  <div className="mt-3 flex items-center gap-2">
-                    <span className="px-3 py-1 bg-slate-900 text-[11px] font-semibold text-slate-300 rounded-lg border border-slate-800">
-                      ☕ Xícaras & Cafés
-                    </span>
-                    <span className="px-3 py-1 bg-slate-900 text-[11px] font-semibold text-slate-300 rounded-lg border border-slate-800">
-                      🥐 Doces & Pratos
-                    </span>
-                  </div>
-                </div>
-              )}
+              </div>
 
               <input
                 ref={fileInputRef}
                 type="file"
                 accept="image/*"
+                multiple
                 capture="environment"
-                onChange={handleFileChange}
+                onChange={handleAddPhotos}
                 className="hidden"
               />
 
-              {/* Photography Pro Tips */}
+              {/* Angle guidance visual cards */}
               <div className="p-4 bg-slate-950/70 border border-slate-800 rounded-2xl space-y-2">
                 <div className="flex items-center gap-2 text-xs font-bold text-orange-400 uppercase tracking-wider">
                   <Info className="w-4 h-4" />
-                  <span>Dicas para Máxima Fidelidade 3D:</span>
+                  <span>Dica de Especialista para Fidelidade 100%:</span>
                 </div>
-                <ul className="text-xs text-slate-300 space-y-1.5 list-disc list-inside">
-                  <li>Tire a foto em um ângulo de <strong>45 graus</strong> (mostrando a parte de cima e a lateral da xícara/prato).</li>
-                  <li>Prefira locais com <strong>boa iluminação natural</strong> sobre a mesa.</li>
-                  <li>Evite fundos muito poluídos para facilitar o corte automático da IA.</li>
-                </ul>
+                <div className="grid grid-cols-2 gap-2 text-[11px] text-slate-300">
+                  <div className="bg-slate-900/80 p-2.5 rounded-xl border border-slate-800">
+                    <strong className="text-orange-300 block mb-0.5">1. Ângulo Frontal a 45°</strong>
+                    Mostre a altura da xícara/prato e o topo da comida.
+                  </div>
+                  <div className="bg-slate-900/80 p-2.5 rounded-xl border border-slate-800">
+                    <strong className="text-orange-300 block mb-0.5">2. Ângulos Laterais & Topo</strong>
+                    Tire fotos dos lados para a IA capturar 360° sem distorção.
+                  </div>
+                </div>
               </div>
 
             </div>
@@ -273,25 +344,25 @@ export const AI3DScannerModal: React.FC<AI3DScannerModalProps> = ({
                   />
                 </div>
                 <p className="text-xs text-slate-400 font-mono">
-                  {progress}% concluído • Reconstrução Neural 3D
+                  {progress}% concluído • Processamento Neural 3D
                 </p>
               </div>
             </div>
           )}
 
-          {/* STEP 3: Generated 3D Result Inspection */}
+          {/* STEP 3: Generated 3D Result Inspection & Instant Publish Form */}
           {generatedResult && inspectionDish && (
-            <div className="space-y-4 animate-fade-in">
+            <div className="space-y-5 animate-fade-in">
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2 text-xs font-bold text-emerald-400 uppercase tracking-wider">
                   <Check className="w-4 h-4" />
-                  <span>Modelo 3D Gerado com Sucesso!</span>
+                  <span>Modelo 3D Foto-Realista Gerado com Sucesso!</span>
                 </div>
-                <span className="text-[11px] text-slate-400 font-mono">Pronto para WebAR (GLB + USDZ)</span>
+                <span className="text-[10px] text-slate-400 font-mono">Dual AR Ready (GLB + USDZ)</span>
               </div>
 
               {/* 3D Interactive Inspection Viewport */}
-              <div className="h-72 w-full rounded-2xl overflow-hidden border-2 border-emerald-500/40 shadow-2xl bg-slate-950">
+              <div className="h-64 w-full rounded-2xl overflow-hidden border-2 border-emerald-500/40 shadow-2xl bg-slate-950">
                 <ModelViewer3D
                   dish={inspectionDish}
                   className="w-full h-full"
@@ -299,17 +370,63 @@ export const AI3DScannerModal: React.FC<AI3DScannerModalProps> = ({
                 />
               </div>
 
-              {/* Specs and AI suggestions */}
-              {generatedResult.dishSuggestion && (
-                <div className="p-4 bg-slate-950 border border-slate-800 rounded-2xl text-xs space-y-2">
-                  <span className="font-bold text-white block">Sugestão de Cardápio por IA:</span>
-                  <div className="grid grid-cols-2 gap-2 text-slate-300">
-                    <div><strong>Nome sugerido:</strong> {generatedResult.dishSuggestion.name}</div>
-                    <div><strong>Preço sugerido:</strong> R$ {generatedResult.dishSuggestion.estimatedPrice.toFixed(2)}</div>
+              {/* Quick Details Editor for 1-Click Publishing */}
+              <div className="p-4 bg-slate-950 border border-slate-800 rounded-2xl space-y-3">
+                <span className="text-xs font-bold text-white uppercase tracking-wider block">
+                  Informações para Publicação no Cardápio:
+                </span>
+
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                  <div className="sm:col-span-2">
+                    <label className="block text-[10px] font-bold text-slate-400 uppercase mb-1">Nome do Item</label>
+                    <input
+                      type="text"
+                      value={dishName}
+                      onChange={(e) => setDishName(e.target.value)}
+                      placeholder="Ex: Croissant Especial com Geleia"
+                      className="w-full px-3 py-2 bg-slate-900 border border-slate-800 rounded-xl text-xs text-white focus:outline-none focus:border-orange-500"
+                    />
                   </div>
-                  <p className="text-slate-400">{generatedResult.dishSuggestion.description}</p>
+
+                  <div>
+                    <label className="block text-[10px] font-bold text-slate-400 uppercase mb-1">Preço (R$)</label>
+                    <input
+                      type="text"
+                      value={dishPrice}
+                      onChange={(e) => setDishPrice(e.target.value)}
+                      placeholder="24.00"
+                      className="w-full px-3 py-2 bg-slate-900 border border-slate-800 rounded-xl text-xs text-white focus:outline-none focus:border-orange-500"
+                    />
+                  </div>
                 </div>
-              )}
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-[10px] font-bold text-slate-400 uppercase mb-1">Categoria</label>
+                    <select
+                      value={dishCategory}
+                      onChange={(e) => setDishCategory(e.target.value)}
+                      className="w-full px-3 py-2 bg-slate-900 border border-slate-800 rounded-xl text-xs text-white focus:outline-none focus:border-orange-500"
+                    >
+                      {categories.map((c) => (
+                        <option key={c.id} value={c.id}>{c.icon} {c.name}</option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="block text-[10px] font-bold text-slate-400 uppercase mb-1">Descrição</label>
+                    <input
+                      type="text"
+                      value={dishDescription}
+                      onChange={(e) => setDishDescription(e.target.value)}
+                      placeholder="Descrição breve do sabor..."
+                      className="w-full px-3 py-2 bg-slate-900 border border-slate-800 rounded-xl text-xs text-white focus:outline-none focus:border-orange-500"
+                    />
+                  </div>
+                </div>
+              </div>
+
             </div>
           )}
 
@@ -327,32 +444,38 @@ export const AI3DScannerModal: React.FC<AI3DScannerModalProps> = ({
           {!generatedResult ? (
             <button
               onClick={handleStartGeneration}
-              disabled={!selectedImage || isGenerating}
+              disabled={!images.length || isGenerating}
               className="py-3.5 px-6 rounded-2xl bg-gradient-to-r from-orange-500 via-amber-500 to-orange-600 hover:from-orange-400 hover:to-orange-500 text-white font-extrabold text-xs shadow-lg shadow-orange-500/25 flex items-center gap-2 transition-all transform active:scale-98 disabled:opacity-40"
             >
               {isGenerating ? (
                 <>
                   <Loader2 className="w-4 h-4 animate-spin" />
-                  <span>Gerando 3D...</span>
+                  <span>Gerando 3D Fotorealista...</span>
                 </>
               ) : (
                 <>
                   <Sparkles className="w-4 h-4" />
-                  <span>Gerar Modelo 3D com IA</span>
+                  <span>Gerar Modelo 3D ({images.length} {images.length === 1 ? 'Foto' : 'Fotos'})</span>
                   <ArrowRight className="w-4 h-4" />
                 </>
               )}
             </button>
           ) : (
             <button
-              onClick={() => {
-                onApply3DModel(generatedResult);
-                onClose();
-              }}
+              onClick={handleDirectPublish}
               className="py-3.5 px-6 rounded-2xl bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-400 hover:to-emerald-500 text-white font-extrabold text-xs shadow-lg shadow-emerald-500/25 flex items-center gap-2 transition-all transform active:scale-98"
             >
-              <Check className="w-4 h-4" />
-              <span>Aplicar este Modelo 3D ao Prato</span>
+              {publishedSuccess ? (
+                <>
+                  <Check className="w-4 h-4" />
+                  <span>Publicado no Cardápio!</span>
+                </>
+              ) : (
+                <>
+                  <ShoppingBag className="w-4 h-4" />
+                  <span>Publicar no Cardápio Agora</span>
+                </>
+              )}
             </button>
           )}
         </div>
