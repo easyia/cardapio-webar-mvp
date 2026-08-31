@@ -1,59 +1,76 @@
 @import "tailwindcss";
 
 :root {
-  font-family: 'Plus Jakarta Sans', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, 'Open Sans', 'Helvetica Neue', sans-serif;
-  --brand-primary: #f97316;
-  --brand-primary-rgb: 249, 115, 22;
+  font-family: 'Plus Jakarta Sans', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  --bg-obsidian: #0c0b0a;
+  --bg-espresso: #161412;
+  --bg-basalt: #1e1b18;
+  --brand-amber: #d97706;
+  --brand-gold: #e6be75;
+  --brand-terracotta: #b45309;
+  --text-alabaster: #faf8f5;
+  --text-travertine: #a39e93;
 }
 
 h1, h2, h3, .font-heading {
-  font-family: 'Outfit', 'Plus Jakarta Sans', sans-serif;
+  font-family: 'Playfair Display', Georgia, serif;
+  letter-spacing: -0.015em;
 }
 
-/* Custom smooth scroll and scrollbar */
+.font-mono, .font-price {
+  font-family: 'JetBrains Mono', monospace;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Custom smooth scroll and luxury scrollbar */
 html {
   scroll-behavior: smooth;
   -webkit-tap-highlight-color: transparent;
+  background-color: #0c0b0a;
 }
 
 ::-webkit-scrollbar {
-  width: 6px;
-  height: 6px;
+  width: 5px;
+  height: 5px;
 }
 
 ::-webkit-scrollbar-track {
-  background: rgba(15, 23, 42, 0.6);
+  background: rgba(12, 11, 10, 0.9);
 }
 
 ::-webkit-scrollbar-thumb {
-  background: rgba(100, 116, 139, 0.4);
+  background: rgba(217, 119, 6, 0.35);
   border-radius: 9999px;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: rgba(249, 115, 22, 0.6);
+  background: rgba(217, 119, 6, 0.7);
 }
 
-/* Glassmorphism utility classes */
-.glass-panel {
-  background: rgba(15, 23, 42, 0.75);
+/* Luxury Glassmorphism & Atelier Cards */
+.atelier-card {
+  background: linear-gradient(145deg, rgba(22, 20, 18, 0.85) 0%, rgba(12, 11, 10, 0.95) 100%);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border: 1px solid rgba(217, 119, 6, 0.18);
+  box-shadow: 0 12px 40px -10px rgba(0, 0, 0, 0.7);
+}
+
+.atelier-card:hover {
+  border-color: rgba(217, 119, 6, 0.45);
+}
+
+.atelier-glass {
+  background: rgba(22, 20, 18, 0.75);
   backdrop-filter: blur(16px);
   -webkit-backdrop-filter: blur(16px);
   border: 1px solid rgba(255, 255, 255, 0.08);
 }
 
-.glass-panel-light {
-  background: rgba(30, 41, 59, 0.6);
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
-  border: 1px solid rgba(255, 255, 255, 0.1);
-}
-
-.glass-card {
-  background: linear-gradient(135deg, rgba(30, 41, 59, 0.7) 0%, rgba(15, 23, 42, 0.8) 100%);
-  backdrop-filter: blur(12px);
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.37);
+.gold-badge {
+  background: linear-gradient(135deg, rgba(230, 190, 117, 0.15) 0%, rgba(217, 119, 6, 0.2) 100%);
+  border: 1px solid rgba(230, 190, 117, 0.4);
+  color: #e6be75;
 }
 
 /* Model Viewer Custom Styling */
@@ -66,15 +83,7 @@ model-viewer {
 }
 
 model-viewer::part(default-ar-button) {
-  display: none; /* We use our own high-end custom AR triggers */
-}
-
-.glow-orange {
-  box-shadow: 0 0 25px -5px rgba(249, 115, 22, 0.4);
-}
-
-.glow-subtle {
-  box-shadow: 0 0 15px -3px rgba(255, 255, 255, 0.1);
+  display: none;
 }
 
 /* Hide scrollbar for category tabs */

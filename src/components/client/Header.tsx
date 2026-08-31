@@ -1,6 +1,7 @@
 import React from 'react';
 import { Sparkles, Wifi, Search, Star, Utensils } from 'lucide-react';
 import type { Restaurant } from '../../types';
+import { i18n } from '../../services/i18n';
 
 interface HeaderProps {
   restaurant: Restaurant;
@@ -17,29 +18,31 @@ export const Header: React.FC<HeaderProps> = ({
   searchQuery,
   onSearchChange,
 }) => {
+  const t = i18n.t();
+
   return (
-    <header className="relative w-full overflow-hidden bg-slate-950 border-b border-slate-800/80">
+    <header className="relative w-full overflow-hidden bg-[#0C0B0A] border-b border-[#1E1B18]">
       {/* Hero Cover Banner with Parallax Gradient */}
       <div className="relative h-44 sm:h-56 w-full overflow-hidden">
         <img
           src={restaurant.cover_url}
           alt={restaurant.name}
-          className="w-full h-full object-cover object-center filter brightness-65 scale-105 transition-transform duration-700"
+          className="w-full h-full object-cover object-center filter brightness-60 scale-105 transition-transform duration-700"
         />
-        <div className="absolute inset-0 bg-gradient-to-t from-slate-950 via-slate-950/60 to-transparent" />
+        <div className="absolute inset-0 bg-gradient-to-t from-[#0C0B0A] via-[#0C0B0A]/65 to-transparent" />
         
         {/* Floating Table Badge */}
         {tableNumber && (
-          <div className="absolute top-4 right-4 z-10 flex items-center gap-1.5 bg-orange-500/90 text-white font-bold text-xs px-3.5 py-1.5 rounded-full shadow-lg backdrop-blur-md border border-orange-400/40 animate-pulse-subtle">
+          <div className="absolute top-4 right-4 z-10 flex items-center gap-1.5 bg-gradient-to-r from-amber-600 to-orange-600 text-white font-bold text-xs px-3.5 py-1.5 rounded-full shadow-xl backdrop-blur-md border border-amber-400/40">
             <Utensils className="w-3.5 h-3.5" />
-            <span>Mesa {tableNumber}</span>
+            <span>{t.tableNumberLabel} {tableNumber}</span>
           </div>
         )}
 
         {/* WebAR Badge */}
-        <div className="absolute top-4 left-4 z-10 flex items-center gap-1.5 bg-slate-900/85 backdrop-blur-md text-slate-200 text-xs px-3 py-1.5 rounded-full border border-slate-700/60 shadow-lg">
-          <Sparkles className="w-3.5 h-3.5 text-orange-400" />
-          <span className="font-medium">Cardápio 3D & WebAR</span>
+        <div className="absolute top-4 left-4 z-10 flex items-center gap-1.5 bg-[#161412]/90 backdrop-blur-md text-amber-200 text-xs px-3.5 py-1.5 rounded-full border border-amber-500/30 shadow-xl">
+          <Sparkles className="w-3.5 h-3.5 text-amber-400" />
+          <span className="font-semibold tracking-wide">WebAR 1:1 Atelier</span>
         </div>
       </div>
 
@@ -49,36 +52,35 @@ export const Header: React.FC<HeaderProps> = ({
           
           <div className="flex items-end gap-4">
             {/* Restaurant Logo */}
-            <div className="relative w-20 h-20 sm:w-24 sm:h-24 rounded-2xl overflow-hidden border-3 border-slate-900 bg-slate-800 shadow-2xl flex-shrink-0">
+            <div className="relative w-20 h-20 sm:w-24 sm:h-24 rounded-2xl overflow-hidden border-2 border-amber-500/40 bg-[#161412] shadow-2xl flex-shrink-0">
               <img
                 src={restaurant.logo_url}
                 alt={restaurant.name}
                 className="w-full h-full object-cover"
               />
-              <div className="absolute inset-0 ring-1 ring-inset ring-white/10 rounded-2xl" />
             </div>
 
             {/* Title & Tagline */}
             <div>
-              <h1 className="text-2xl sm:text-3xl font-extrabold text-white tracking-tight font-heading">
+              <h1 className="text-2xl sm:text-3xl font-black text-[#FAF8F5] tracking-tight font-heading">
                 {restaurant.name}
               </h1>
-              <p className="text-xs sm:text-sm text-slate-300 line-clamp-1 mt-0.5">
+              <p className="text-xs sm:text-sm text-[#A39E93] line-clamp-1 mt-0.5 font-light">
                 {restaurant.tagline}
               </p>
             </div>
           </div>
 
           {/* Quick Info Tags */}
-          <div className="flex flex-wrap items-center gap-2 text-xs text-slate-300">
+          <div className="flex flex-wrap items-center gap-2 text-xs text-[#A39E93]">
             {restaurant.wifi_name && (
-              <div className="flex items-center gap-1 px-2.5 py-1 rounded-lg bg-slate-900/90 border border-slate-800 text-slate-300" title={`Senha: ${restaurant.wifi_password}`}>
+              <div className="flex items-center gap-1 px-3 py-1 rounded-xl bg-[#161412] border border-[#1E1B18]" title={`Senha: ${restaurant.wifi_password}`}>
                 <Wifi className="w-3.5 h-3.5 text-emerald-400" />
-                <span>Wi-Fi: <strong className="text-slate-200">{restaurant.wifi_name}</strong></span>
+                <span>Wi-Fi: <strong className="text-white">{restaurant.wifi_name}</strong></span>
               </div>
             )}
             
-            <div className="flex items-center gap-1 px-2.5 py-1 rounded-lg bg-slate-900/90 border border-slate-800 text-amber-300 font-semibold">
+            <div className="flex items-center gap-1 px-3 py-1 rounded-xl bg-[#161412] border border-[#1E1B18] text-amber-300 font-semibold">
               <Star className="w-3.5 h-3.5 fill-amber-400 text-amber-400" />
               <span>4.9 (420+ avaliações)</span>
             </div>
@@ -87,18 +89,18 @@ export const Header: React.FC<HeaderProps> = ({
 
         {/* Search Bar */}
         <div className="mt-5 relative">
-          <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
+          <Search className="w-4 h-4 text-[#716B61] absolute left-3.5 top-1/2 -translate-y-1/2" />
           <input
             type="text"
             value={searchQuery}
             onChange={(e) => onSearchChange(e.target.value)}
-            placeholder="Buscar pratos, ingredientes, drinks, sobremesas..."
-            className="w-full pl-10 pr-4 py-2.5 bg-slate-900/90 border border-slate-800 rounded-xl text-sm text-slate-100 placeholder-slate-500 focus:outline-none focus:border-orange-500 focus:ring-1 focus:ring-orange-500 transition-colors shadow-inner"
+            placeholder={t.searchPlaceholder}
+            className="w-full pl-10 pr-4 py-3 bg-[#161412] border border-[#1E1B18] rounded-2xl text-sm text-[#FAF8F5] placeholder-[#716B61] focus:outline-none focus:border-amber-500 transition-all shadow-inner"
           />
           {searchQuery && (
             <button
               onClick={() => onSearchChange('')}
-              className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-slate-400 hover:text-slate-200 bg-slate-800 px-2 py-0.5 rounded-md"
+              className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-[#A39E93] hover:text-white bg-[#1E1B18] px-2.5 py-1 rounded-lg"
             >
               Limpar
             </button>
