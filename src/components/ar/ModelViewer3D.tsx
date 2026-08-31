@@ -10,8 +10,7 @@ import {
   Loader2, 
   Camera, 
   QrCode, 
-  Sliders,
-  Scan
+  Sliders
 } from 'lucide-react';
 import type { Dish } from '../../types';
 import { storeService } from '../../services/storeService';
@@ -45,7 +44,7 @@ export const ModelViewer3D: React.FC<ModelViewer3DProps> = ({
   const [progress, setProgress] = useState(0);
   const [hasError, setHasError] = useState(false);
 
-  // Dynamic Scale state (default: 0.35 for realistic tableware size instead of 1.0 meter default)
+  // Dynamic Scale state (default: 0.35)
   const defaultScale = initialScale || dish.scale || 0.35;
   const [currentScale, setCurrentScale] = useState<number>(defaultScale);
   const [showScaleMenu, setShowScaleMenu] = useState(false);
@@ -112,7 +111,7 @@ export const ModelViewer3D: React.FC<ModelViewer3DProps> = ({
     }
   };
 
-  // Direct 1-tap Native WebAR projection (Apple Quick Look / Android Scene Viewer / Live Camera)
+  // Direct 1-Tap Unstoppable WebAR Projection
   const handleLaunchAR = (e: React.MouseEvent) => {
     e.preventDefault();
     e.stopPropagation();
@@ -123,7 +122,7 @@ export const ModelViewer3D: React.FC<ModelViewer3DProps> = ({
     const isIOS = /iPhone|iPad|iPod/i.test(navigator.userAgent);
     const isMobile = isAndroid || isIOS;
 
-    // Desktop check: open QR modal for mobile scanning
+    // 1. If on Desktop / Laptop -> Open QR Code Modal
     if (!isMobile) {
       if (onOpenARModal) {
         onOpenARModal();
@@ -131,20 +130,19 @@ export const ModelViewer3D: React.FC<ModelViewer3DProps> = ({
       return;
     }
 
-    // 1. If viewer has native AR capability, trigger activateAR()
-    if (viewer && typeof viewer.activateAR === 'function' && viewer.canActivateAR) {
-      try {
-        viewer.activateAR();
-        return;
-      } catch (err) {
-        console.warn('viewer.activateAR error:', err);
-      }
-    }
-
-    // 2. iOS Safari AR Quick Look fallback
+    // 2. If on iOS (iPhone / iPad) -> Trigger AR Quick Look with fallback
     if (isIOS) {
+      if (viewer && typeof viewer.activateAR === 'function') {
+        try {
+          viewer.activateAR();
+          return;
+        } catch (err) {
+          console.warn('viewer.activateAR error:', err);
+        }
+      }
+
       const usdzUrl = dish.usdz_url || dish.model_3d_url;
-      if (usdzUrl && (usdzUrl.includes('.usdz') || usdzUrl.includes('format=usdz'))) {
+      if (usdzUrl) {
         const fullUsdzUrl = usdzUrl.startsWith('http')
           ? usdzUrl
           : `${window.location.origin}${usdzUrl}`;
@@ -164,10 +162,25 @@ export const ModelViewer3D: React.FC<ModelViewer3DProps> = ({
         }, 1000);
         return;
       }
+
+      // If Quick Look unavailable, open live web camera
+      if (onOpenLiveCamera) {
+        onOpenLiveCamera(dish);
+        return;
+      }
     }
 
-    // 3. Android Scene Viewer fallback
+    // 3. If on Android -> Trigger Google Scene Viewer / WebXR
     if (isAndroid) {
+      if (viewer && typeof viewer.activateAR === 'function') {
+        try {
+          viewer.activateAR();
+          return;
+        } catch (err) {
+          console.warn('viewer.activateAR Android error:', err);
+        }
+      }
+
       const glbUrl = dish.model_3d_url.startsWith('http') 
         ? dish.model_3d_url 
         : `${window.location.origin}${dish.model_3d_url}`;
@@ -177,17 +190,7 @@ export const ModelViewer3D: React.FC<ModelViewer3DProps> = ({
       return;
     }
 
-    // 4. Universal Fallback: Open Live Camera In-Browser Surface Projector
-    if (onOpenLiveCamera) {
-      onOpenLiveCamera(dish);
-    } else if (onOpenARModal) {
-      onOpenARModal();
-    }
-  };
-
-  const handleLaunchLiveCamera = (e: React.MouseEvent) => {
-    e.preventDefault();
-    e.stopPropagation();
+    // 4. Universal Fallback: Live Camera In-Browser Surface Projector
     if (onOpenLiveCamera) {
       onOpenLiveCamera(dish);
     } else if (onOpenARModal) {
@@ -325,23 +328,25 @@ export const ModelViewer3D: React.FC<ModelViewer3DProps> = ({
       </div>
 
       {/* Bottom Main Action Button: VER NA MESA (AR TRIGGER) */}
-      <div className="absolute bottom-3 left-3 right-3 z-20 flex flex-col sm:flex-row gap-2">
+      <div className="absolute bottom-3 left-3 right-3 z-20">
         <button
           type="button"
           onClick={handleLaunchAR}
-          className="flex-1 py-3 px-4 bg-gradient-to-r from-amber-600 via-orange-600 to-amber-600 hover:from-amber-500 hover:to-orange-500 text-white font-extrabold rounded-2xl shadow-2xl shadow-amber-600/30 flex items-center justify-between gap-3 transition-all transform active:scale-[0.98] border border-amber-400/40 group/btn cursor-pointer"
+          className="w-full py-3.5 px-5 bg-gradient-to-r from-amber-600 via-orange-600 to-amber-600 hover:from-amber-500 hover:to-orange-500 text-white font-extrabold rounded-2xl shadow-2xl shadow-amber-600/35 flex items-center justify-between gap-3 transition-all transform active:scale-[0.98] border border-amber-400/40 group/btn cursor-pointer"
         >
-          <div className="flex items-center gap-2.5">
-            <div className="p-1.5 rounded-xl bg-white/20 group-hover/btn:rotate-12 transition-transform shadow-inner flex items-center justify-center">
-              <Camera className="w-4 h-4 text-white" />
+          <div className="flex items-center gap-3">
+            <div className="p-2 rounded-xl bg-white/20 group-hover/btn:rotate-12 transition-transform shadow-inner flex items-center justify-center">
+              <Camera className="w-5 h-5 text-white" />
             </div>
             <div className="text-left">
               <div className="text-xs sm:text-sm leading-tight font-extrabold flex items-center gap-1.5 text-white">
-                <span>{isMobileDevice ? 'PROJETAR NA MESA (AR)' : 'PROJETAR NA MESA'}</span>
-                <Sparkles className="w-3 h-3 text-yellow-200 animate-pulse" />
+                <span>{isMobileDevice ? 'PROJETAR NA MINHA MESA' : 'VER EM REALIDADE AUMENTADA'}</span>
+                <Sparkles className="w-3.5 h-3.5 text-yellow-200 animate-pulse" />
               </div>
               <div className="text-[10px] text-amber-100 font-normal">
-                {isMobileDevice ? 'Apple Quick Look & Google AR' : 'Escanear QR Code no celular'}
+                {isMobileDevice 
+                  ? 'Abre a câmera para projetar na mesa física' 
+                  : 'Clique para escanear o QR Code no celular'}
               </div>
             </div>
           </div>
@@ -349,25 +354,12 @@ export const ModelViewer3D: React.FC<ModelViewer3DProps> = ({
           {isMobileDevice ? (
             <Smartphone className="w-5 h-5 text-white/90 animate-pulse-subtle flex-shrink-0" />
           ) : (
-            <div className="p-1 rounded-lg bg-black/20 text-amber-200 flex items-center gap-1 text-[10px] font-bold flex-shrink-0">
-              <QrCode className="w-3.5 h-3.5" />
+            <div className="p-1.5 rounded-lg bg-black/20 text-amber-200 flex items-center gap-1 text-[11px] font-bold flex-shrink-0">
+              <QrCode className="w-4 h-4" />
               <span className="hidden xs:inline">QR Code</span>
             </div>
           )}
         </button>
-
-        {/* Live Camera Direct Button for 100% device compatibility */}
-        {onOpenLiveCamera && isMobileDevice && (
-          <button
-            type="button"
-            onClick={handleLaunchLiveCamera}
-            className="py-3 px-3.5 bg-[#161412]/95 hover:bg-[#1E1B18] text-amber-300 font-bold rounded-2xl border border-amber-500/40 shadow-xl flex items-center justify-center gap-1.5 text-xs transition-all active:scale-95 flex-shrink-0"
-            title="Abrir Câmera ao Vivo com Radar de Mesa no Navegador"
-          >
-            <Scan className="w-4 h-4 text-amber-400 animate-pulse" />
-            <span className="text-[11px]">Câmera Web</span>
-          </button>
-        )}
       </div>
 
       {/* Floating Viewport Controls */}
@@ -413,19 +405,19 @@ export const ModelViewer3D: React.FC<ModelViewer3DProps> = ({
                     onClick={() => handleUpdateScale(0.25)}
                     className="py-1 rounded-lg bg-[#0C0B0A] hover:bg-amber-600 text-[10px] font-bold text-slate-300 hover:text-white"
                   >
-                    25% (Pequeno)
+                    25% (Café)
                   </button>
                   <button
-                    onClick={() => handleUpdateScale(0.38)}
+                    onClick={() => handleUpdateScale(0.35)}
                     className="py-1 rounded-lg bg-[#0C0B0A] hover:bg-amber-600 text-[10px] font-bold text-slate-300 hover:text-white"
                   >
-                    38% (Prato)
+                    35% (Prato)
                   </button>
                   <button
-                    onClick={() => handleUpdateScale(0.65)}
+                    onClick={() => handleUpdateScale(0.55)}
                     className="py-1 rounded-lg bg-[#0C0B0A] hover:bg-amber-600 text-[10px] font-bold text-slate-300 hover:text-white"
                   >
-                    65% (Grande)
+                    55% (Pizza)
                   </button>
                 </div>
               </div>

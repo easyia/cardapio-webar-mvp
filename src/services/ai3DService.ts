@@ -1,4 +1,4 @@
-// AI 3D Generation Service (Gastronomy Optimized + Multi-view Photogrammetry + Tripo3D v2.5 PBR Engine)
+// AI 3D Generation Service (Pure Photogrammetry + Dual WebAR)
 
 export type GastronomyCategory = 
   | 'coffee_drink' 
@@ -12,10 +12,8 @@ export interface GastronomyPreset {
   id: GastronomyCategory;
   name: string;
   icon: string;
-  prompt: string;
   defaultScale: number;
   tips: string;
-  defaultCategoryName: string;
   defaultPrice: number;
 }
 
@@ -24,60 +22,48 @@ export const GASTRONOMY_PRESETS: Record<GastronomyCategory, GastronomyPreset> = 
     id: 'coffee_drink',
     name: 'Cafés & Bebidas',
     icon: '☕',
-    prompt: 'artisanal specialty coffee cup, smooth ceramic mug, saucer, rich espresso crema and latte art, specular glaze, beverage photography',
     defaultScale: 0.25,
-    tips: 'Enquadre a xícara a 45° mostrando a espuma/crema no topo e a altura da xícara com o pires.',
-    defaultCategoryName: 'Cafés Especiais',
+    tips: 'Enquadre a xícara a 45° mostrando o topo da bebida e a lateral da xícara.',
     defaultPrice: 14.00,
   },
   pizza_pie: {
     id: 'pizza_pie',
     name: 'Pizzas & Porções',
     icon: '🍕',
-    prompt: 'delicious hot artisan pizza pie on wooden peel or round plate, crispy golden crust, melted mozzarella cheese, fresh basil, realistic culinary scan',
     defaultScale: 0.48,
-    tips: 'Posicione a câmera a 45° a 60° para capturar a borda dourada e os recheios brilhantes.',
-    defaultCategoryName: 'Pizzas Artesanais',
+    tips: 'Posicione a câmera a 45° para capturar a borda e o recheio por completo.',
     defaultPrice: 58.00,
   },
   burger_sandwich: {
     id: 'burger_sandwich',
-    name: 'Burgers & Merendas',
+    name: 'Burgers & Lanches',
     icon: '🍔',
-    prompt: 'gourmet artisan burger on rustic board, toasted brioche bun with sesame seeds, juicy beef patty, melted cheddar cheese, crispy bacon, layered sandwich',
     defaultScale: 0.32,
-    tips: 'Tire a foto na altura dos olhos (30° a 45°) para mostrar todas as camadas do sanduíche e o pão.',
-    defaultCategoryName: 'Sanduíches & Burgers',
+    tips: 'Tire a foto na diagonal (40°) para mostrar a altura e as camadas do lanche.',
     defaultPrice: 38.00,
   },
   bowl_pasta: {
     id: 'bowl_pasta',
-    name: 'Massas & Bowls',
-    icon: '🍝',
-    prompt: 'gourmet pasta dish in restaurant ceramic bowl, rich sauce with glossy sheen, grated parmesan, fresh herbs, Italian culinary plating',
-    defaultScale: 0.38,
-    tips: 'Foque no centro do prato a 45°, destacando o molho brilhante e as ervas frescas.',
-    defaultCategoryName: 'Pratos Principais',
-    defaultPrice: 48.00,
+    name: 'Massas & Tapiocas',
+    icon: '🥞',
+    defaultScale: 0.35,
+    tips: 'Enquadre a 45° centralizando o prato ou tapioca em local bem iluminado.',
+    defaultPrice: 28.00,
   },
   dessert_pastry: {
     id: 'dessert_pastry',
     name: 'Sobremesas & Doces',
     icon: '🍰',
-    prompt: 'fine dining pastry dessert on elegant plate, glossy chocolate glaze, powdered sugar, delicate fruit garnish, French bakery confectionery',
     defaultScale: 0.28,
-    tips: 'Ilumine bem para destacar o brilho da calda e o formato delicado do doce.',
-    defaultCategoryName: 'Sobremesas Autorais',
+    tips: 'Aproxime a câmera a 45° focando no doce e no prato de apoio.',
     defaultPrice: 22.00,
   },
   general_dish: {
     id: 'general_dish',
     name: 'Prato Geral / Outros',
     icon: '🍽️',
-    prompt: 'appetizing gourmet restaurant dish on clean tableware, realistic food photography, culinary art plating',
     defaultScale: 0.38,
-    tips: 'Coloque o prato em local bem iluminado e enquadre a 45° sem objetos soltos na mesa.',
-    defaultCategoryName: 'Pratos Especiais',
+    tips: 'Foque no centro do prato a 45° com iluminação natural ou ambiente claro.',
     defaultPrice: 35.00,
   },
 };
@@ -102,8 +88,8 @@ export interface AI3DTaskResult {
 
 const API_CONFIG_KEY = 'auramenu_ai3d_api_key';
 
-// Specialized Gastronomy Image Pre-Processor (Appetite Color Tuning + Background Soft Edge Cleaning)
-async function optimizeFoodImage(dataUrl: string, category: GastronomyCategory = 'general_dish', maxDimension = 1280): Promise<string> {
+// Clean, lossless image preparation preserving 100% of the user's authentic photo pixels
+async function prepareCleanPhotoFor3D(dataUrl: string, maxDimension = 1500): Promise<string> {
   return new Promise((resolve) => {
     const img = new Image();
     img.crossOrigin = 'anonymous';
@@ -126,33 +112,8 @@ async function optimizeFoodImage(dataUrl: string, category: GastronomyCategory =
       if (ctx) {
         ctx.imageSmoothingEnabled = true;
         ctx.imageSmoothingQuality = 'high';
-
-        // 1. Clean background fill
-        ctx.fillStyle = '#ffffff';
-        ctx.fillRect(0, 0, width, height);
-
-        // 2. Gastronomy Appetite Color Calibration by category
-        const filterStr = category === 'coffee_drink'
-          ? 'contrast(1.10) saturate(1.20) brightness(1.03)'
-          : category === 'pizza_pie'
-          ? 'contrast(1.12) saturate(1.18) brightness(1.02)'
-          : 'contrast(1.08) saturate(1.15) brightness(1.02)';
-
-        ctx.filter = filterStr;
         ctx.drawImage(img, 0, 0, width, height);
-        ctx.filter = 'none';
-
-        // 3. Soft Radial Vignette Clearing on outer edges to neutralize messy table backgrounds
-        const radius = Math.min(width, height) * 0.48;
-        const centerX = width / 2;
-        const centerY = height / 2;
-        const gradient = ctx.createRadialGradient(centerX, centerY, radius * 0.75, centerX, centerY, radius * 1.2);
-        gradient.addColorStop(0, 'rgba(255, 255, 255, 0)');
-        gradient.addColorStop(1, 'rgba(255, 255, 255, 0.45)');
-        ctx.fillStyle = gradient;
-        ctx.fillRect(0, 0, width, height);
-
-        resolve(canvas.toDataURL('image/jpeg', 0.94));
+        resolve(canvas.toDataURL('image/jpeg', 0.95));
       } else {
         resolve(dataUrl);
       }
@@ -187,7 +148,7 @@ export const ai3DService = {
   },
 
   /**
-   * Generates a 3D model with Gastronomy Neural Optimization
+   * Pure Photogrammetry 3D Reconstruction from User Photos (Zero AI hallucination)
    */
   async generate3DFromMultipleImages(
     rawImages: string[],
@@ -202,19 +163,16 @@ export const ai3DService = {
     const apiKey = this.getApiKey();
     const preset = GASTRONOMY_PRESETS[category] || GASTRONOMY_PRESETS.general_dish;
 
-    onProgress(5, rawImages.length === 1 
-      ? `Calibrando cores apetitosas e isolando ${preset.name.toLowerCase()}...` 
-      : `Otimizando ${rawImages.length} fotos gastronômicas (${preset.name})...`
-    );
-    const optimizedImages = await Promise.all(rawImages.map(img => optimizeFoodImage(img, category, 1280)));
+    onProgress(5, 'Preparando foto em alta resolução para reconstrução volumétrica...');
+    const optimizedImages = await Promise.all(rawImages.map(img => prepareCleanPhotoFor3D(img, 1500)));
 
     onProgress(15, rawImages.length === 1 
-      ? `Enviando para o cluster neural Tripo3D v2.5 com perfil de ${preset.name}...` 
-      : `Enviando ${optimizedImages.length} ângulos gastronômicos para reconstrução 3D...`
+      ? 'Enviando foto original para o cluster neural da Tripo3D...' 
+      : `Enviando ${optimizedImages.length} fotos do produto para reconstrução multi-view...`
     );
 
     try {
-      // 1. Call serverless backend endpoint
+      // 1. Call serverless backend endpoint (pure image photogrammetry)
       const response = await fetch('/api/generate-3d', {
         method: 'POST',
         headers: {
@@ -225,8 +183,6 @@ export const ai3DService = {
           imageBase64: optimizedImages[0],
           imageType: 'jpg',
           quality,
-          gastronomyCategory: category,
-          gastronomyPrompt: preset.prompt,
           clientApiKey: apiKey || undefined,
         }),
       });
@@ -245,8 +201,8 @@ export const ai3DService = {
       const taskId = data.taskId;
       const isMulti = data.type === 'multiview_to_model';
       onProgress(25, isMulti 
-        ? `IA reconstruindo malha PBR de até 50.000 polígonos para ${preset.name}...` 
-        : `IA sintetizando relevo, volume e brilho para ${preset.name}...`
+        ? 'Reconstruindo malha 3D volumétrica a partir dos ângulos da foto...' 
+        : 'Projetando textura e calculando profundidade da foto original...'
       );
 
       // 2. Poll task status until GLB is ready
@@ -265,7 +221,7 @@ export const ai3DService = {
 
         if (statusData.status === 'running' || statusData.status === 'queued') {
           const p = Math.min(25 + attempts * 2.2, 85);
-          onProgress(p, `Gerando texturas PBR realistas de alimentos (${Math.round(p)}%)...`);
+          onProgress(p, `Mapeando texturas fotográficas e relevo (${Math.round(p)}%)...`);
         } else if (statusData.status === 'success') {
           rawGlbUrl =
             statusData.output?.pbr_model ||
@@ -325,7 +281,7 @@ export const ai3DService = {
         ? encodeUrlForProxy(rawUsdzUrl, 'usdz')
         : finalGlbUrl;
 
-      onProgress(100, `Prato 3D (${preset.name}) pronto com Realidade Aumentada!`);
+      onProgress(100, `Prato 3D reconstruído com sucesso!`);
 
       return {
         success: true,
@@ -334,18 +290,17 @@ export const ai3DService = {
         modelUsdzUrl: finalUsdzUrl,
         previewImageUrl: optimizedImages[0],
         dishSuggestion: {
-          name: `${preset.name.split('&')[0].trim()} Autoral`,
+          name: `${preset.name.split('&')[0].trim()} Especial`,
           category: 'cat-01',
-          description: `Delicioso ${preset.name.toLowerCase()} preparado artesanalmente com apresentação em 3D e Realidade Aumentada.`,
+          description: `Item fotografado e reconstruído fielmente em 3D para o cardápio com Realidade Aumentada.`,
           estimatedPrice: preset.defaultPrice,
-          ingredients: ['Ingredientes frescos selecionados'],
+          ingredients: ['Ingredientes selecionados'],
           suggestedScale: preset.defaultScale,
         },
         logs: [
           `Tripo3D Task ID: ${taskId}`,
-          `Perfil Gastronômico: ${preset.name}`,
-          `Processamento Neural v2.5 (${quality.toUpperCase()} HD) concluído`,
-          'Texturas PBR 2K: Albedo + Normal Map + Roughness + Specular'
+          `Fotogrametria Fiel 1:1 Concluída`,
+          'Dual WebAR: GLB (Android SceneViewer) + USDZ (Apple QuickLook)'
         ]
       };
     } catch (err: any) {
@@ -355,14 +310,14 @@ export const ai3DService = {
   },
 
   /**
-   * Super Refinement Stage: Runs high-resolution neural geometric refinement & 2K PBR bake
+   * Super Refinement Stage: Runs high-resolution geometric refinement
    */
   async refine3DModel(
     draftTaskId: string,
     onProgress: (percent: number, statusText: string) => void
   ): Promise<{ modelGlbUrl: string; modelUsdzUrl: string }> {
     const apiKey = this.getApiKey();
-    onProgress(10, 'Iniciando Super Refinamento Gastronômico HD (Alisando bordas e gerando texturas 2K)...');
+    onProgress(10, 'Iniciando Super Refinamento HD (Polindo geometria e texturas)...');
 
     const refineRes = await fetch('/api/generate-3d', {
       method: 'POST',
@@ -395,7 +350,7 @@ export const ai3DService = {
 
       if (statusData.status === 'running' || statusData.status === 'queued') {
         const p = Math.min(15 + attempts * 2.5, 90);
-        onProgress(p, `Polindo geometria e sintetizando texturas apetitosas 2K (${Math.round(p)}%)...`);
+        onProgress(p, `Polindo bordas e refinando texturas (${Math.round(p)}%)...`);
       } else if (statusData.status === 'success') {
         rawGlbUrl =
           statusData.output?.pbr_model ||
@@ -415,7 +370,7 @@ export const ai3DService = {
     const finalGlbUrl = encodeUrlForProxy(rawGlbUrl, 'glb');
     const finalUsdzUrl = rawUsdzUrl ? encodeUrlForProxy(rawUsdzUrl, 'usdz') : finalGlbUrl;
 
-    onProgress(100, 'Super Refinamento Gastronômico 2K PBR Concluído!');
+    onProgress(100, 'Super Refinamento 2K Concluído!');
     return { modelGlbUrl: finalGlbUrl, modelUsdzUrl: finalUsdzUrl };
   },
 

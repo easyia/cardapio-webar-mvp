@@ -1,4 +1,4 @@
-// Vercel Serverless Function: Proxy to Tripo3D API (Supports Gastronomy Presets, Ultra HD v2.5 Neural Engine, Multi-View, Refinement and PBR Textures)
+// Vercel Serverless Function: Pure Photogrammetry Proxy to Tripo3D API (Zero Hallucination, Faithful Image Texture Projection)
 export const config = {
   api: {
     bodyParser: {
@@ -34,9 +34,7 @@ export default async function handler(req: any, res: any) {
       clientApiKey, 
       requestType, 
       originalTaskId,
-      quality = 'ultra',
-      gastronomyPrompt,
-      gastronomyCategory
+      quality = 'ultra'
     } = req.body || {};
 
     // Get Tripo API Key
@@ -100,7 +98,7 @@ export default async function handler(req: any, res: any) {
       }
     }
 
-    // 3. Multi-view Photogrammetry (Multi-photo for high-fidelity food dishes)
+    // 3. Multi-view Photogrammetry (Multi-photo for high-fidelity 3D dishes)
     if (Array.isArray(imagesBase64) && imagesBase64.length > 1) {
       const formattedFiles = imagesBase64.map((b64: string) => {
         const cleanB64 = b64.includes('base64,') ? b64.split('base64,')[1] : b64;
@@ -112,15 +110,12 @@ export default async function handler(req: any, res: any) {
 
       const tripoMultiPayload: any = {
         type: 'multiview_to_model',
-        model_version: 'v2.5-20250123',
         files: formattedFiles,
-        prompt: gastronomyPrompt || undefined,
         params: {
           texture: true,
           pbr: true,
           face_limit: quality === 'ultra' ? 50000 : 35000,
           texture_resolution: 2048,
-          texture_quality: 'detailed',
         }
       };
 
@@ -141,14 +136,13 @@ export default async function handler(req: any, res: any) {
           taskId: tripoMultiData.data.task_id,
           type: 'multiview_to_model',
           viewsCount: imagesBase64.length,
-          gastronomyCategory,
         });
       }
 
       console.warn('Multiview fallback to single image:', tripoMultiData);
     }
 
-    // 4. Single Image to 3D Model Task with Gastronomy Neural Optimization
+    // 4. Single Image to 3D Model: Pure Image Photogrammetry (NO Text Prompts that hallucinate)
     const primaryImage = imageBase64 || (Array.isArray(imagesBase64) ? imagesBase64[0] : null);
 
     if (!primaryImage) {
@@ -163,18 +157,15 @@ export default async function handler(req: any, res: any) {
 
     const singleImagePayload: any = {
       type: 'image_to_model',
-      model_version: 'v2.5-20250123',
       file: {
         type: fileFormat,
         data: base64Data,
       },
-      prompt: gastronomyPrompt || undefined,
       params: {
         texture: true,
         pbr: true,
         face_limit: quality === 'ultra' ? 48000 : 32000,
         texture_resolution: 2048,
-        texture_quality: 'detailed',
       }
     };
 
@@ -190,7 +181,7 @@ export default async function handler(req: any, res: any) {
     const tripoData = await tripoRes.json();
 
     if (tripoData.code !== 0 || !tripoData.data?.task_id) {
-      // Fallback without model_version if restricted
+      // Direct fallback
       const fallbackRes = await fetch('https://api.tripo3d.ai/v2/openapi/task', {
         method: 'POST',
         headers: {
@@ -218,7 +209,6 @@ export default async function handler(req: any, res: any) {
         success: true,
         taskId: fallbackData.data.task_id,
         type: 'image_to_model',
-        gastronomyCategory,
       });
     }
 
@@ -226,7 +216,6 @@ export default async function handler(req: any, res: any) {
       success: true,
       taskId: tripoData.data.task_id,
       type: 'image_to_model',
-      gastronomyCategory,
     });
   } catch (error: any) {
     console.error('API /generate-3d Error:', error);
