@@ -14,7 +14,8 @@ import {
   Layers, 
   ShoppingBag, 
   Sliders,
-  CheckCircle2
+  Wand2,
+  Cpu
 } from 'lucide-react';
 import { ai3DService } from '../../services/ai3DService';
 import type { AI3DTaskResult } from '../../services/ai3DService';
@@ -36,11 +37,15 @@ export const AI3DScannerModal: React.FC<AI3DScannerModalProps> = ({
   // Multiple images state (1 to 4 angles)
   const [images, setImages] = useState<string[]>([]);
   const [isGenerating, setIsGenerating] = useState(false);
+  const [isRefining, setIsRefining] = useState(false);
   const [progress, setProgress] = useState(0);
   const [statusText, setStatusText] = useState('');
   const [generatedResult, setGeneratedResult] = useState<AI3DTaskResult | null>(null);
   const [apiKey, setApiKey] = useState(ai3DService.getApiKey());
   const [showApiKeySettings, setShowApiKeySettings] = useState(false);
+
+  // Quality Engine Mode
+  const [qualityMode, setQualityMode] = useState<'ultra' | 'standard'>('ultra');
 
   // Scale state (default: 0.35)
   const [scale, setScale] = useState<number>(0.35);
@@ -85,15 +90,19 @@ export const AI3DScannerModal: React.FC<AI3DScannerModalProps> = ({
     setIsGenerating(true);
     setProgress(5);
     setStatusText(images.length === 1 
-      ? 'Iniciando IA Generativa a partir da sua foto...' 
-      : 'Iniciando IA Generativa Multi-Angular...'
+      ? 'Iniciando IA Neural v2.5 Ultra HD a partir da sua foto...' 
+      : 'Iniciando Reconstrução Multi-Angular v2.5...'
     );
 
     try {
-      const result = await ai3DService.generate3DFromMultipleImages(images, (p, text) => {
-        setProgress(p);
-        setStatusText(text);
-      });
+      const result = await ai3DService.generate3DFromMultipleImages(
+        images, 
+        (p, text) => {
+          setProgress(p);
+          setStatusText(text);
+        },
+        qualityMode
+      );
 
       setGeneratedResult(result);
       if (result.dishSuggestion) {
@@ -106,6 +115,35 @@ export const AI3DScannerModal: React.FC<AI3DScannerModalProps> = ({
     } catch (err: any) {
       alert(`Erro na geração 3D: ${err.message || 'Tente novamente com fotos mais nítidas.'}`);
       setIsGenerating(false);
+    }
+  };
+
+  const handleSuperRefine = async () => {
+    if (!generatedResult || !generatedResult.taskId) return;
+
+    setIsRefining(true);
+    setProgress(10);
+    setStatusText('Iniciando Super Refinamento Neural HD...');
+
+    try {
+      const refined = await ai3DService.refine3DModel(
+        generatedResult.taskId,
+        (p, text) => {
+          setProgress(p);
+          setStatusText(text);
+        }
+      );
+
+      setGeneratedResult({
+        ...generatedResult,
+        modelGlbUrl: refined.modelGlbUrl,
+        modelUsdzUrl: refined.modelUsdzUrl,
+        isRefined: true,
+      });
+      setIsRefining(false);
+    } catch (err: any) {
+      alert(`Aviso de refinamento: ${err.message || 'O modelo base foi preservado.'}`);
+      setIsRefining(false);
     }
   };
 
@@ -122,7 +160,7 @@ export const AI3DScannerModal: React.FC<AI3DScannerModalProps> = ({
     const newDish: Omit<Dish, 'id' | 'created_at'> = {
       restaurant_id: storeService.getRestaurant().id,
       category_id: dishCategory || categories[0]?.id || 'cat-01',
-      name: dishName.trim() || 'Prato Autoral em 3D',
+      name: dishName.trim() || 'Item Escaneado em 3D',
       description: dishDescription.trim() || 'Modelo 3D foto-realista gerado por IA com suporte a Realidade Aumentada.',
       price: parseFloat(dishPrice.replace(',', '.')) || 24.00,
       image_url: generatedResult.previewImageUrl,
@@ -133,10 +171,10 @@ export const AI3DScannerModal: React.FC<AI3DScannerModalProps> = ({
       is_featured: true,
       is_chef_special: true,
       ar_ready: true,
-      portion_size: '220g / 250ml',
-      preparation_time: '5 min',
-      calories: 190,
-      ingredients: generatedResult.dishSuggestion?.ingredients || ['Ingredientes selecionados'],
+      portion_size: 'Item Único',
+      preparation_time: 'Pronto',
+      calories: 0,
+      ingredients: generatedResult.dishSuggestion?.ingredients || ['Acabamento de Alta Definição'],
     };
 
     storeService.addDish(newDish);
@@ -184,14 +222,14 @@ export const AI3DScannerModal: React.FC<AI3DScannerModalProps> = ({
             <div>
               <div className="flex items-center gap-2">
                 <h3 className="text-lg font-black text-white font-heading">
-                  Estúdio IA: Foto ➔ Modelo 3D & WebAR
+                  Estúdio IA 3D v2.5 Ultra HD
                 </h3>
-                <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-400 border border-emerald-500/40">
-                  1 a 4 Fotos
+                <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-300 border border-amber-500/40 font-mono">
+                  PBR 2K Engine
                 </span>
               </div>
               <p className="text-xs text-[#A39E93]">
-                Envie de 1 a 4 fotos (1 foto já funciona imediatamente!)
+                Digitalize qualquer objeto (cafés, pratos, bonés, eletrônicos, garrafas) em 3D de alta fidelidade
               </p>
             </div>
           </div>
@@ -248,16 +286,36 @@ export const AI3DScannerModal: React.FC<AI3DScannerModalProps> = ({
         {/* Content Area */}
         <div className="p-6 overflow-y-auto flex-1 space-y-6">
           
-          {/* STEP 1: Capture Photos */}
+          {/* STEP 1: Capture Photos & Setup */}
           {!generatedResult && !isGenerating && (
             <div className="space-y-5">
               
-              {/* Highlight Info Banner */}
-              <div className="p-3.5 bg-gradient-to-r from-amber-500/15 via-orange-500/10 to-[#0C0B0A] border border-amber-500/30 rounded-2xl flex items-center gap-3">
-                <CheckCircle2 className="w-5 h-5 text-amber-400 flex-shrink-0" />
-                <p className="text-xs text-slate-200 leading-relaxed">
-                  <strong className="text-amber-300">1 única foto já é suficiente</strong> para gerar o 3D! Adicionar mais ângulos (laterais e topo) é opcional para capturar detalhes 360°.
-                </p>
+              {/* Quality Preset Toggle */}
+              <div className="p-3 bg-[#0C0B0A] rounded-2xl border border-[#1E1B18] flex items-center justify-between">
+                <div className="flex items-center gap-2 text-xs">
+                  <Cpu className="w-4 h-4 text-amber-400" />
+                  <span className="font-bold text-white">Modo de Fidelidade:</span>
+                </div>
+                <div className="flex items-center bg-[#161412] p-1 rounded-xl border border-[#2B2723] text-xs">
+                  <button
+                    type="button"
+                    onClick={() => setQualityMode('ultra')}
+                    className={`px-3 py-1 rounded-lg font-bold transition-all ${
+                      qualityMode === 'ultra' ? 'bg-gradient-to-r from-amber-600 to-orange-600 text-white shadow-md' : 'text-[#A39E93]'
+                    }`}
+                  >
+                    🌟 Ultra HD (50k polígonos + 2K PBR)
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setQualityMode('standard')}
+                    className={`px-2.5 py-1 rounded-lg font-bold transition-all ${
+                      qualityMode === 'standard' ? 'bg-[#1E1B18] text-white' : 'text-[#A39E93]'
+                    }`}
+                  >
+                    ⚡ Rápido
+                  </button>
+                </div>
               </div>
 
               {/* Photo Angles Grid (Up to 4 angles) */}
@@ -268,7 +326,7 @@ export const AI3DScannerModal: React.FC<AI3DScannerModalProps> = ({
                     <span>Fotos Selecionadas ({images.length}/4)</span>
                   </label>
                   <span className="text-[11px] text-amber-400 font-bold">
-                    {images.length === 0 ? 'Tire ou selecione 1 foto' : `${images.length} foto(s) pronta(s)`}
+                    {images.length === 0 ? 'Tire ou envie 1 foto' : `${images.length} foto(s) carregada(s)`}
                   </span>
                 </div>
 
@@ -320,20 +378,25 @@ export const AI3DScannerModal: React.FC<AI3DScannerModalProps> = ({
                 className="hidden"
               />
 
-              {/* Guidance tips */}
-              <div className="p-4 bg-[#0C0B0A] border border-[#1E1B18] rounded-2xl space-y-2">
+              {/* Specialized Scanning Guide for Complex Objects (Caps, Drones, Bottles, Dishes) */}
+              <div className="p-4 bg-[#0C0B0A] border border-[#1E1B18] rounded-2xl space-y-2.5">
                 <div className="flex items-center gap-2 text-xs font-bold text-amber-400 uppercase tracking-wider">
                   <Info className="w-4 h-4" />
-                  <span>Dicas para melhor resultado 3D:</span>
+                  <span>Como escanear objetos complexos (Bonés, Drones, Eletrônicos) sem bugar:</span>
                 </div>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-[11px] text-[#A39E93]">
+                
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 text-[11px] text-[#A39E93]">
                   <div className="bg-[#161412] p-2.5 rounded-xl border border-[#1E1B18]">
-                    <strong className="text-amber-300 block mb-0.5">📸 Boa Iluminação</strong>
-                    Tire a foto em local bem iluminado, focando no prato ou xícara.
+                    <strong className="text-amber-300 block mb-0.5">1. Fundo Limpo e Neutro</strong>
+                    Coloque o boné ou drone sobre uma mesa clara ou folha lisa, sem objetos ao redor.
                   </div>
                   <div className="bg-[#161412] p-2.5 rounded-xl border border-[#1E1B18]">
-                    <strong className="text-amber-300 block mb-0.5">📐 Ângulo a 45°</strong>
-                    Posicione o celular a 45 graus para pegar a altura e o topo da comida.
+                    <strong className="text-amber-300 block mb-0.5">2. Iluminação Homogênea</strong>
+                    Evite sombras duras ou reflexos de flash forte para que a IA entenda as bordas.
+                  </div>
+                  <div className="bg-[#161412] p-2.5 rounded-xl border border-[#1E1B18]">
+                    <strong className="text-amber-300 block mb-0.5">3. 2 a 3 Fotos (Frente + Topo)</strong>
+                    Para partes finas (hélices, aba do boné), envie 2 ou 3 ângulos para dar profundidade real.
                   </div>
                 </div>
               </div>
@@ -342,7 +405,7 @@ export const AI3DScannerModal: React.FC<AI3DScannerModalProps> = ({
           )}
 
           {/* STEP 2: Processing Live Animation */}
-          {isGenerating && (
+          {(isGenerating || isRefining) && (
             <div className="py-12 flex flex-col items-center justify-center text-center space-y-6">
               <div className="relative">
                 <div className="w-24 h-24 rounded-full border-4 border-amber-500/20 border-t-amber-500 animate-spin" />
@@ -362,21 +425,27 @@ export const AI3DScannerModal: React.FC<AI3DScannerModalProps> = ({
                   />
                 </div>
                 <p className="text-xs text-[#A39E93] font-mono">
-                  {progress}% concluído • Processamento Neural 3D
+                  {progress}% concluído • Cluster Neural Tripo3D v2.5 PBR
                 </p>
               </div>
             </div>
           )}
 
-          {/* STEP 3: Generated 3D Result Inspection & Instant Publish Form */}
-          {generatedResult && inspectionDish && (
+          {/* STEP 3: Generated 3D Result Inspection, Super Refine & Instant Publish */}
+          {generatedResult && inspectionDish && !isRefining && (
             <div className="space-y-5 animate-fade-in">
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2 text-xs font-bold text-emerald-400 uppercase tracking-wider">
                   <Check className="w-4 h-4" />
                   <span>Modelo 3D Foto-Realista Gerado com Sucesso!</span>
                 </div>
-                <span className="text-[10px] text-[#A39E93] font-mono">Dual AR Ready</span>
+                {generatedResult.isRefined ? (
+                  <span className="text-[10px] text-amber-300 font-bold bg-amber-500/20 px-2 py-0.5 rounded-full border border-amber-500/40">
+                    ✨ Super Refinado 2K
+                  </span>
+                ) : (
+                  <span className="text-[10px] text-[#A39E93] font-mono">Dual AR Ready</span>
+                )}
               </div>
 
               {/* 3D Interactive Inspection Viewport */}
@@ -389,6 +458,28 @@ export const AI3DScannerModal: React.FC<AI3DScannerModalProps> = ({
                   onScaleChange={setScale}
                 />
               </div>
+
+              {/* Super Refine CTA Banner */}
+              {!generatedResult.isRefined && (
+                <div className="p-3.5 bg-gradient-to-r from-amber-950/40 via-orange-950/30 to-[#0C0B0A] border border-amber-500/40 rounded-2xl flex items-center justify-between gap-3">
+                  <div className="flex items-center gap-2.5">
+                    <Wand2 className="w-5 h-5 text-amber-400 animate-pulse flex-shrink-0" />
+                    <div>
+                      <h5 className="text-xs font-black text-white">Deseja polir ainda mais os detalhes?</h5>
+                      <p className="text-[10px] text-[#A39E93]">Executa o refinador neural para alisar imperfeições e sintetizar reflexos 2K.</p>
+                    </div>
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={handleSuperRefine}
+                    className="py-2 px-3.5 rounded-xl bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 border border-amber-500/50 text-xs font-bold transition-all flex items-center gap-1.5 flex-shrink-0"
+                  >
+                    <Sparkles className="w-3.5 h-3.5" />
+                    <span>Polir em Super HD</span>
+                  </button>
+                </div>
+              )}
 
               {/* Scale Control for Studio */}
               <div className="p-4 bg-[#0C0B0A] border border-amber-500/30 rounded-2xl space-y-2.5">
@@ -412,27 +503,34 @@ export const AI3DScannerModal: React.FC<AI3DScannerModalProps> = ({
                   className="w-full accent-amber-500 cursor-pointer h-2 bg-[#161412] rounded-lg"
                 />
 
-                <div className="flex items-center gap-2">
+                <div className="grid grid-cols-4 gap-1.5">
                   <button
                     type="button"
                     onClick={() => setScale(0.25)}
-                    className={`flex-1 py-1 rounded-lg text-[10px] font-bold border ${scale === 0.25 ? 'bg-amber-600 text-white' : 'bg-[#161412] text-[#A39E93]'}`}
+                    className={`py-1 rounded-lg text-[10px] font-bold border ${scale === 0.25 ? 'bg-amber-600 text-white' : 'bg-[#161412] text-[#A39E93]'}`}
                   >
                     25% (Xícara)
                   </button>
                   <button
                     type="button"
-                    onClick={() => setScale(0.35)}
-                    className={`flex-1 py-1 rounded-lg text-[10px] font-bold border ${scale === 0.35 ? 'bg-amber-600 text-white' : 'bg-[#161412] text-[#A39E93]'}`}
+                    onClick={() => setScale(0.38)}
+                    className={`py-1 rounded-lg text-[10px] font-bold border ${scale === 0.38 ? 'bg-amber-600 text-white' : 'bg-[#161412] text-[#A39E93]'}`}
                   >
-                    35% (Doce)
+                    38% (Boné/Doce)
                   </button>
                   <button
                     type="button"
                     onClick={() => setScale(0.55)}
-                    className={`flex-1 py-1 rounded-lg text-[10px] font-bold border ${scale === 0.55 ? 'bg-amber-600 text-white' : 'bg-[#161412] text-[#A39E93]'}`}
+                    className={`py-1 rounded-lg text-[10px] font-bold border ${scale === 0.55 ? 'bg-amber-600 text-white' : 'bg-[#161412] text-[#A39E93]'}`}
                   >
-                    55% (Prato)
+                    55% (Drone/Prato)
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setScale(0.85)}
+                    className={`py-1 rounded-lg text-[10px] font-bold border ${scale === 0.85 ? 'bg-amber-600 text-white' : 'bg-[#161412] text-[#A39E93]'}`}
+                  >
+                    85% (Grande)
                   </button>
                 </div>
               </div>
@@ -450,7 +548,7 @@ export const AI3DScannerModal: React.FC<AI3DScannerModalProps> = ({
                       type="text"
                       value={dishName}
                       onChange={(e) => setDishName(e.target.value)}
-                      placeholder="Ex: Croissant Especial com Geleia"
+                      placeholder="Ex: Drone Quadcopter 4K ou Boné Trucker"
                       className="w-full px-3 py-2 bg-[#161412] border border-[#1E1B18] rounded-xl text-xs text-white focus:outline-none focus:border-amber-500"
                     />
                   </div>
@@ -461,7 +559,7 @@ export const AI3DScannerModal: React.FC<AI3DScannerModalProps> = ({
                       type="text"
                       value={dishPrice}
                       onChange={(e) => setDishPrice(e.target.value)}
-                      placeholder="24.00"
+                      placeholder="89.00"
                       className="w-full px-3 py-2 bg-[#161412] border border-[#1E1B18] rounded-xl text-xs text-white focus:outline-none focus:border-amber-500"
                     />
                   </div>
@@ -487,7 +585,7 @@ export const AI3DScannerModal: React.FC<AI3DScannerModalProps> = ({
                       type="text"
                       value={dishDescription}
                       onChange={(e) => setDishDescription(e.target.value)}
-                      placeholder="Descrição breve do sabor..."
+                      placeholder="Descrição breve do item..."
                       className="w-full px-3 py-2 bg-[#161412] border border-[#1E1B18] rounded-xl text-xs text-white focus:outline-none focus:border-amber-500"
                     />
                   </div>
@@ -517,12 +615,12 @@ export const AI3DScannerModal: React.FC<AI3DScannerModalProps> = ({
               {isGenerating ? (
                 <>
                   <Loader2 className="w-4 h-4 animate-spin" />
-                  <span>Gerando 3D Fotorealista...</span>
+                  <span>Processando Neural v2.5...</span>
                 </>
               ) : (
                 <>
                   <Sparkles className="w-4 h-4" />
-                  <span>Gerar Modelo 3D ({images.length} {images.length === 1 ? 'Foto' : 'Fotos'})</span>
+                  <span>Gerar em Ultra HD ({images.length} {images.length === 1 ? 'Foto' : 'Fotos'})</span>
                   <ArrowRight className="w-4 h-4" />
                 </>
               )}

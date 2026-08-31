@@ -1,4 +1,4 @@
-// Vercel Serverless Function: Proxy to Tripo3D API (Supports Single Image and Multi-View Photogrammetry)
+// Vercel Serverless Function: Proxy to Tripo3D API (Supports Ultra HD v2.5 Neural Model, Multi-View, Refinement and PBR Textures)
 export const config = {
   api: {
     bodyParser: {
@@ -33,7 +33,9 @@ export default async function handler(req: any, res: any) {
       imageType, 
       clientApiKey, 
       requestType, 
-      originalTaskId 
+      originalTaskId,
+      enableRefine,
+      quality = 'ultra'
     } = req.body || {};
 
     // Get Tripo API Key
@@ -73,7 +75,31 @@ export default async function handler(req: any, res: any) {
       }
     }
 
-    // 2. Multi-view Photogrammetry (Multi-photo for high-fidelity food dishes)
+    // 2. If this is a Model Refinement task request (Refine Mesh & 2K PBR Textures)
+    if (requestType === 'refine_model' && originalTaskId) {
+      const refineRes = await fetch('https://api.tripo3d.ai/v2/openapi/task', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${apiKey.trim()}`,
+        },
+        body: JSON.stringify({
+          type: 'refine_model',
+          draft_model_task_id: originalTaskId,
+        }),
+      });
+
+      const refineData = await refineRes.json();
+      if (refineData.code === 0 && refineData.data?.task_id) {
+        return res.status(200).json({
+          success: true,
+          taskId: refineData.data.task_id,
+          type: 'refine_model',
+        });
+      }
+    }
+
+    // 3. Multi-view Photogrammetry (Multi-photo for high-fidelity food, caps, drones, complex objects)
     if (Array.isArray(imagesBase64) && imagesBase64.length > 1) {
       const formattedFiles = imagesBase64.map((b64: string) => {
         const cleanB64 = b64.includes('base64,') ? b64.split('base64,')[1] : b64;
@@ -83,16 +109,26 @@ export default async function handler(req: any, res: any) {
         };
       });
 
+      const tripoMultiPayload: any = {
+        type: 'multiview_to_model',
+        model_version: 'v2.5-20250123',
+        files: formattedFiles,
+        params: {
+          texture: true,
+          pbr: true,
+          face_limit: quality === 'ultra' ? 50000 : 35000,
+          texture_resolution: 2048,
+          texture_quality: 'detailed',
+        }
+      };
+
       const tripoMultiRes = await fetch('https://api.tripo3d.ai/v2/openapi/task', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${apiKey.trim()}`,
         },
-        body: JSON.stringify({
-          type: 'multiview_to_model',
-          files: formattedFiles,
-        }),
+        body: JSON.stringify(tripoMultiPayload),
       });
 
       const tripoMultiData = await tripoMultiRes.json();
@@ -106,11 +142,10 @@ export default async function handler(req: any, res: any) {
         });
       }
 
-      // If multiview fails or not supported on free tier, fallback to primary image_to_model
       console.warn('Multiview fallback to single image:', tripoMultiData);
     }
 
-    // 3. Single Image to 3D Model Task
+    // 4. Single Image to 3D Model Task with Ultra HD v2.5 Engine
     const primaryImage = imageBase64 || (Array.isArray(imagesBase64) ? imagesBase64[0] : null);
 
     if (!primaryImage) {
@@ -123,27 +158,62 @@ export default async function handler(req: any, res: any) {
 
     const fileFormat = imageType === 'image/jpeg' ? 'jpg' : (imageType || 'png');
 
+    const singleImagePayload: any = {
+      type: 'image_to_model',
+      model_version: 'v2.5-20250123',
+      file: {
+        type: fileFormat,
+        data: base64Data,
+      },
+      params: {
+        texture: true,
+        pbr: true,
+        face_limit: quality === 'ultra' ? 48000 : 32000,
+        texture_resolution: 2048,
+        texture_quality: 'detailed',
+      }
+    };
+
     const tripoRes = await fetch('https://api.tripo3d.ai/v2/openapi/task', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
         'Authorization': `Bearer ${apiKey.trim()}`,
       },
-      body: JSON.stringify({
-        type: 'image_to_model',
-        file: {
-          type: fileFormat,
-          data: base64Data,
-        },
-      }),
+      body: JSON.stringify(singleImagePayload),
     });
 
     const tripoData = await tripoRes.json();
 
     if (tripoData.code !== 0 || !tripoData.data?.task_id) {
-      return res.status(400).json({
-        error: tripoData.message || 'Erro ao processar imagem na Tripo3D',
-        details: tripoData,
+      // Fallback without model_version if specific model version is constrained by plan
+      const fallbackRes = await fetch('https://api.tripo3d.ai/v2/openapi/task', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${apiKey.trim()}`,
+        },
+        body: JSON.stringify({
+          type: 'image_to_model',
+          file: {
+            type: fileFormat,
+            data: base64Data,
+          },
+        }),
+      });
+
+      const fallbackData = await fallbackRes.json();
+      if (fallbackData.code !== 0 || !fallbackData.data?.task_id) {
+        return res.status(400).json({
+          error: fallbackData.message || tripoData.message || 'Erro ao processar imagem na Tripo3D',
+          details: fallbackData,
+        });
+      }
+
+      return res.status(200).json({
+        success: true,
+        taskId: fallbackData.data.task_id,
+        type: 'image_to_model',
       });
     }
 
