@@ -8,11 +8,14 @@ import {
   Eye, 
   EyeOff, 
   Box, 
-  AlertCircle
+  AlertCircle,
+  Wand2
 } from 'lucide-react';
 import type { Dish, Category } from '../../types';
 import { storeService } from '../../services/storeService';
 import { DishFormModal } from './DishFormModal';
+import { AI3DScannerModal } from './AI3DScannerModal';
+import type { AI3DTaskResult } from '../../services/ai3DService';
 
 interface DishesManagerProps {
   dishes: Dish[];
@@ -31,6 +34,7 @@ export const DishesManager: React.FC<DishesManagerProps> = ({
   const [selectedCategory, setSelectedCategory] = useState('all');
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingDish, setEditingDish] = useState<Dish | null>(null);
+  const [isAIScannerOpen, setIsAIScannerOpen] = useState(false);
 
   const categoriesMap = new Map(categories.map(c => [c.id, c.name]));
 
@@ -69,9 +73,32 @@ export const DishesManager: React.FC<DishesManagerProps> = ({
     }
   };
 
+  const handleQuickAI3DApply = (result: AI3DTaskResult) => {
+    const newDishData: Omit<Dish, 'id' | 'created_at'> = {
+      restaurant_id: restaurantId,
+      category_id: categories[0]?.id || 'cat-01',
+      name: result.dishSuggestion?.name || 'Novo Prato 3D por IA',
+      description: result.dishSuggestion?.description || 'Prato cadastrado automaticamente com modelo 3D por IA.',
+      price: result.dishSuggestion?.estimatedPrice || 22.00,
+      image_url: result.previewImageUrl,
+      model_3d_url: result.modelGlbUrl,
+      usdz_url: result.modelUsdzUrl,
+      portion_size: '200g / 220ml',
+      preparation_time: '5 min',
+      calories: 180,
+      ingredients: result.dishSuggestion?.ingredients || ['Ingredientes frescos'],
+      is_active: true,
+      is_featured: true,
+      is_chef_special: true,
+    };
+
+    storeService.addDish(newDishData);
+    alert('Prato 3D gerado e publicado no cardápio com sucesso!');
+  };
+
   return (
     <div className="space-y-6">
-      {/* Top Bar: Search, Category Filter & Add Button */}
+      {/* Top Bar: Search, Category Filter & Actions */}
       <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 bg-slate-900/80 p-4 rounded-2xl border border-slate-800">
         
         {/* Search Input */}
@@ -81,12 +108,12 @@ export const DishesManager: React.FC<DishesManagerProps> = ({
             type="text"
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            placeholder="Buscar pratos..."
+            placeholder="Buscar pratos ou cafés..."
             className="w-full pl-10 pr-4 py-2 bg-slate-950 border border-slate-800 rounded-xl text-xs sm:text-sm text-slate-200 placeholder-slate-500 focus:outline-none focus:border-orange-500"
           />
         </div>
 
-        {/* Category Select */}
+        {/* Category Select & Buttons */}
         <div className="flex items-center gap-2">
           <select
             value={selectedCategory}
@@ -101,12 +128,24 @@ export const DishesManager: React.FC<DishesManagerProps> = ({
             ))}
           </select>
 
+          {/* AI 3D Scanner Button */}
+          <button
+            onClick={() => setIsAIScannerOpen(true)}
+            className="py-2.5 px-3.5 rounded-xl bg-gradient-to-r from-orange-600 via-amber-500 to-orange-500 hover:from-orange-500 hover:to-amber-400 text-white text-xs sm:text-sm font-extrabold flex items-center gap-1.5 shadow-lg shadow-orange-500/25 transition-all flex-shrink-0"
+            title="Tirar foto do produto e gerar 3D com IA"
+          >
+            <Wand2 className="w-4 h-4 animate-pulse" />
+            <span className="hidden md:inline">Foto ➔ 3D IA</span>
+            <span className="md:hidden">IA 3D</span>
+          </button>
+
+          {/* Manual New Dish Button */}
           <button
             onClick={handleOpenAddModal}
-            className="py-2.5 px-4 rounded-xl bg-gradient-to-r from-orange-500 to-amber-500 hover:from-orange-400 hover:to-orange-500 text-white text-xs sm:text-sm font-extrabold flex items-center gap-2 shadow-lg shadow-orange-500/25 transition-all flex-shrink-0"
+            className="py-2.5 px-4 rounded-xl bg-slate-800 hover:bg-slate-700 text-white text-xs sm:text-sm font-bold flex items-center gap-1.5 border border-slate-700 transition-all flex-shrink-0"
           >
             <Plus className="w-4 h-4" />
-            <span>Novo Prato</span>
+            <span>Novo</span>
           </button>
         </div>
       </div>
@@ -139,7 +178,7 @@ export const DishesManager: React.FC<DishesManagerProps> = ({
                   {/* 3D Indicator */}
                   <div className="absolute top-2 left-2 flex items-center gap-1 bg-slate-950/85 backdrop-blur-md px-2 py-0.5 rounded-md border border-orange-500/40 text-orange-400 text-[10px] font-bold">
                     <Sparkles className="w-3 h-3 text-orange-400" />
-                    <span>3D GLB</span>
+                    <span>3D & AR</span>
                   </div>
 
                   {/* Active / Paused Pill */}
@@ -237,6 +276,13 @@ export const DishesManager: React.FC<DishesManagerProps> = ({
         dishToEdit={editingDish}
         categories={categories}
         restaurantId={restaurantId}
+      />
+
+      {/* Quick AI 3D Scanner Modal */}
+      <AI3DScannerModal
+        isOpen={isAIScannerOpen}
+        onClose={() => setIsAIScannerOpen(false)}
+        onApply3DModel={handleQuickAI3DApply}
       />
     </div>
   );

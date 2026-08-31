@@ -5,10 +5,13 @@ import {
   Sparkles, 
   Box, 
   ImageIcon, 
-  Check
+  Check,
+  Wand2
 } from 'lucide-react';
 import type { Dish, Category } from '../../types';
 import { ModelViewer3D } from '../ar/ModelViewer3D';
+import { AI3DScannerModal } from './AI3DScannerModal';
+import type { AI3DTaskResult } from '../../services/ai3DService';
 
 interface DishFormModalProps {
   isOpen: boolean;
@@ -34,6 +37,7 @@ export const DishFormModal: React.FC<DishFormModalProps> = ({
   const [description, setDescription] = useState('');
   const [imageUrl, setImageUrl] = useState('');
   const [model3dUrl, setModel3dUrl] = useState('');
+  const [usdzUrl, setUsdzUrl] = useState('');
   const [portionSize, setPortionSize] = useState('');
   const [preparationTime, setPreparationTime] = useState('');
   const [calories, setCalories] = useState('');
@@ -46,6 +50,9 @@ export const DishFormModal: React.FC<DishFormModalProps> = ({
   const [isVegetarian, setIsVegetarian] = useState(false);
   const [isGlutenFree, setIsGlutenFree] = useState(false);
 
+  // AI Scanner Studio Modal
+  const [isAIScannerOpen, setIsAIScannerOpen] = useState(false);
+
   useEffect(() => {
     if (dishToEdit) {
       setName(dishToEdit.name);
@@ -55,6 +62,7 @@ export const DishFormModal: React.FC<DishFormModalProps> = ({
       setDescription(dishToEdit.description);
       setImageUrl(dishToEdit.image_url);
       setModel3dUrl(dishToEdit.model_3d_url);
+      setUsdzUrl(dishToEdit.usdz_url || '');
       setPortionSize(dishToEdit.portion_size || '');
       setPreparationTime(dishToEdit.preparation_time || '');
       setCalories(dishToEdit.calories ? dishToEdit.calories.toString() : '');
@@ -68,15 +76,16 @@ export const DishFormModal: React.FC<DishFormModalProps> = ({
       // Default new dish values
       setName('');
       setCategoryId(categories[0]?.id || '');
-      setPrice('45.00');
+      setPrice('22.00');
       setOriginalPrice('');
       setDescription('');
-      setImageUrl('https://images.unsplash.com/photo-1568901346375-23c9450c58cd?w=800&auto=format&fit=crop&q=80');
+      setImageUrl('https://images.unsplash.com/photo-1534778101976-62847782c213?w=800&auto=format&fit=crop&q=80');
       setModel3dUrl('https://modelviewer.dev/shared-assets/models/shishkebab.glb');
-      setPortionSize('350g');
-      setPreparationTime('15-20 min');
-      setCalories('550');
-      setIngredientsText('Pão artesanal, Carne nobre, Queijo derretido, Molho especial');
+      setUsdzUrl('https://modelviewer.dev/shared-assets/models/Astronaut.usdz');
+      setPortionSize('220ml');
+      setPreparationTime('5 min');
+      setCalories('150');
+      setIngredientsText('Café 100% Arábica, Leite vaporizado, Canela');
       setIsActive(true);
       setIsFeatured(false);
       setIsChefSpecial(false);
@@ -103,6 +112,21 @@ export const DishFormModal: React.FC<DishFormModalProps> = ({
     }
   };
 
+  const handleApplyAIResult = (result: AI3DTaskResult) => {
+    setImageUrl(result.previewImageUrl);
+    setModel3dUrl(result.modelGlbUrl);
+    setUsdzUrl(result.modelUsdzUrl);
+
+    if (result.dishSuggestion) {
+      if (!name) setName(result.dishSuggestion.name);
+      if (!description) setDescription(result.dishSuggestion.description);
+      if (!price) setPrice(result.dishSuggestion.estimatedPrice.toString());
+      if (result.dishSuggestion.ingredients?.length) {
+        setIngredientsText(result.dishSuggestion.ingredients.join(', '));
+      }
+    }
+  };
+
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!name || !price || !categoryId) {
@@ -122,8 +146,9 @@ export const DishFormModal: React.FC<DishFormModalProps> = ({
       description,
       price: parseFloat(price.replace(',', '.')) || 0,
       original_price: originalPrice ? parseFloat(originalPrice.replace(',', '.')) : undefined,
-      image_url: imageUrl || 'https://images.unsplash.com/photo-1546069901-ba9599a7e63c?w=800&auto=format&fit=crop&q=80',
+      image_url: imageUrl || 'https://images.unsplash.com/photo-1534778101976-62847782c213?w=800&auto=format&fit=crop&q=80',
       model_3d_url: model3dUrl || 'https://modelviewer.dev/shared-assets/models/shishkebab.glb',
+      usdz_url: usdzUrl || 'https://modelviewer.dev/shared-assets/models/Astronaut.usdz',
       portion_size: portionSize,
       preparation_time: preparationTime,
       calories: calories ? parseInt(calories, 10) : undefined,
@@ -149,6 +174,7 @@ export const DishFormModal: React.FC<DishFormModalProps> = ({
     price: parseFloat(price.replace(',', '.')) || 0,
     image_url: imageUrl,
     model_3d_url: model3dUrl,
+    usdz_url: usdzUrl,
     is_active: isActive,
     created_at: new Date().toISOString(),
   };
@@ -170,7 +196,7 @@ export const DishFormModal: React.FC<DishFormModalProps> = ({
                 {dishToEdit ? 'Editar Prato & Modelo 3D' : 'Cadastrar Novo Prato com WebAR'}
               </h3>
               <p className="text-xs text-slate-400">
-                Adicione fotos 2D e arquivos .glb para projeção em Realidade Aumentada
+                Gere o modelo 3D com IA a partir de fotos ou faça upload direto
               </p>
             </div>
           </div>
@@ -180,6 +206,32 @@ export const DishFormModal: React.FC<DishFormModalProps> = ({
             className="p-2 rounded-full bg-slate-800 text-slate-400 hover:text-white transition-colors"
           >
             <X className="w-5 h-5" />
+          </button>
+        </div>
+
+        {/* AI Generator Hero Banner inside Form */}
+        <div className="p-4 sm:p-5 bg-gradient-to-r from-orange-950/60 via-amber-950/40 to-slate-950 border-b border-orange-500/30 flex flex-col sm:flex-row items-center justify-between gap-3">
+          <div className="flex items-center gap-3">
+            <div className="p-2 rounded-xl bg-orange-500/20 text-orange-400 border border-orange-500/40">
+              <Wand2 className="w-5 h-5 animate-pulse" />
+            </div>
+            <div>
+              <h4 className="text-sm font-extrabold text-white font-heading">
+                Automatizar com IA: Foto do Celular ➔ Modelo 3D
+              </h4>
+              <p className="text-xs text-slate-300">
+                Tire uma foto do café ou doce e nossa IA gera a malha 3D e texturas automaticamente
+              </p>
+            </div>
+          </div>
+
+          <button
+            type="button"
+            onClick={() => setIsAIScannerOpen(true)}
+            className="py-2.5 px-4 rounded-xl bg-gradient-to-r from-orange-500 to-amber-500 hover:from-orange-400 hover:to-orange-500 text-white font-extrabold text-xs shadow-lg shadow-orange-500/30 flex items-center gap-2 transition-all transform active:scale-98 flex-shrink-0"
+          >
+            <Sparkles className="w-4 h-4" />
+            <span>Abrir Estúdio IA 3D</span>
           </button>
         </div>
 
@@ -193,13 +245,13 @@ export const DishFormModal: React.FC<DishFormModalProps> = ({
               {/* Dish Name */}
               <div>
                 <label className="block text-xs font-bold text-slate-300 uppercase tracking-wider mb-1">
-                  Nome do Prato *
+                  Nome do Prato / Bebida *
                 </label>
                 <input
                   type="text"
                   value={name}
                   onChange={(e) => setName(e.target.value)}
-                  placeholder="Ex: Smash Burger Trufado Black Angus"
+                  placeholder="Ex: Cappuccino Italiano com Canela"
                   required
                   className="w-full px-3.5 py-2.5 bg-slate-950 border border-slate-800 rounded-xl text-sm text-white focus:outline-none focus:border-orange-500"
                 />
@@ -232,7 +284,7 @@ export const DishFormModal: React.FC<DishFormModalProps> = ({
                     type="text"
                     value={price}
                     onChange={(e) => setPrice(e.target.value)}
-                    placeholder="49.90"
+                    placeholder="18.90"
                     required
                     className="w-full px-3.5 py-2.5 bg-slate-950 border border-slate-800 rounded-xl text-sm text-white focus:outline-none focus:border-orange-500"
                   />
@@ -246,7 +298,7 @@ export const DishFormModal: React.FC<DishFormModalProps> = ({
                     type="text"
                     value={originalPrice}
                     onChange={(e) => setOriginalPrice(e.target.value)}
-                    placeholder="59.90"
+                    placeholder="22.00"
                     className="w-full px-3.5 py-2.5 bg-slate-950 border border-slate-800 rounded-xl text-sm text-white focus:outline-none focus:border-orange-500"
                   />
                 </div>
@@ -255,36 +307,54 @@ export const DishFormModal: React.FC<DishFormModalProps> = ({
               {/* Description */}
               <div>
                 <label className="block text-xs font-bold text-slate-300 uppercase tracking-wider mb-1">
-                  Descrição Gourmet
+                  Descrição Atrativa
                 </label>
                 <textarea
                   rows={2}
                   value={description}
                   onChange={(e) => setDescription(e.target.value)}
-                  placeholder="Descreva a experiência, texturas e preparo do prato..."
+                  placeholder="Descreva o sabor, grãos, textura da espuma ou ingredientes nobres..."
                   className="w-full px-3.5 py-2.5 bg-slate-950 border border-slate-800 rounded-xl text-sm text-white focus:outline-none focus:border-orange-500"
                 />
               </div>
 
-              {/* 3D Model GLB Source */}
+              {/* 3D Model Sources (GLB & USDZ) */}
               <div className="p-4 rounded-2xl bg-slate-950 border border-orange-500/30 space-y-3">
                 <div className="flex items-center justify-between">
                   <span className="text-xs font-bold text-orange-400 uppercase tracking-wider flex items-center gap-1.5">
                     <Sparkles className="w-4 h-4" />
-                    <span>Arquivo 3D (.GLB para WebAR)</span>
+                    <span>Modelos 3D para WebAR (Android & iOS)</span>
                   </span>
-                  <span className="text-[10px] text-slate-400">Escala Real 1:1</span>
+                  <span className="text-[10px] text-emerald-400 font-semibold">Dual Engine 1:1</span>
                 </div>
 
-                <input
-                  type="text"
-                  value={model3dUrl}
-                  onChange={(e) => setModel3dUrl(e.target.value)}
-                  placeholder="URL do arquivo .glb (ex: https://.../burger.glb)"
-                  className="w-full px-3.5 py-2 bg-slate-900 border border-slate-800 rounded-xl text-xs text-slate-200 focus:outline-none focus:border-orange-500 font-mono"
-                />
+                <div>
+                  <label className="block text-[11px] text-slate-400 mb-1 font-mono">
+                    Arquivo .GLB (Android Scene Viewer)
+                  </label>
+                  <input
+                    type="text"
+                    value={model3dUrl}
+                    onChange={(e) => setModel3dUrl(e.target.value)}
+                    placeholder="https://.../cappuccino.glb"
+                    className="w-full px-3.5 py-2 bg-slate-900 border border-slate-800 rounded-xl text-xs text-slate-200 focus:outline-none focus:border-orange-500 font-mono"
+                  />
+                </div>
 
-                <div className="flex items-center gap-2">
+                <div>
+                  <label className="block text-[11px] text-slate-400 mb-1 font-mono">
+                    Arquivo .USDZ (Apple iOS Quick Look)
+                  </label>
+                  <input
+                    type="text"
+                    value={usdzUrl}
+                    onChange={(e) => setUsdzUrl(e.target.value)}
+                    placeholder="https://.../cappuccino.usdz"
+                    className="w-full px-3.5 py-2 bg-slate-900 border border-slate-800 rounded-xl text-xs text-slate-200 focus:outline-none focus:border-orange-500 font-mono"
+                  />
+                </div>
+
+                <div className="flex items-center gap-2 pt-1">
                   <label className="flex-1 cursor-pointer py-2 px-3 rounded-xl bg-slate-900 hover:bg-slate-800 border border-slate-700 text-xs font-semibold text-slate-300 flex items-center justify-center gap-2 transition-colors">
                     <Upload className="w-3.5 h-3.5 text-orange-400" />
                     <span>Upload de arquivo .GLB local</span>
@@ -295,24 +365,6 @@ export const DishFormModal: React.FC<DishFormModalProps> = ({
                       className="hidden"
                     />
                   </label>
-
-                  {/* Sample models helper pills */}
-                  <button
-                    type="button"
-                    onClick={() => setModel3dUrl('https://modelviewer.dev/shared-assets/models/shishkebab.glb')}
-                    className="px-2.5 py-2 rounded-xl bg-slate-900 text-[11px] text-slate-400 hover:text-orange-300 border border-slate-800"
-                    title="Usar modelo de Kebab Grelhado"
-                  >
-                    🥩 Kebab
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setModel3dUrl('https://cdn.jsdelivr.net/gh/KhronosGroup/glTF-Sample-Models@master/2.0/Avocado/glTF-Binary/Avocado.glb')}
-                    className="px-2.5 py-2 rounded-xl bg-slate-900 text-[11px] text-slate-400 hover:text-emerald-300 border border-slate-800"
-                    title="Usar modelo de Avocado"
-                  >
-                    🥑 Avocado
-                  </button>
                 </div>
               </div>
 
@@ -332,7 +384,7 @@ export const DishFormModal: React.FC<DishFormModalProps> = ({
 
                 <label className="cursor-pointer py-2 px-3 rounded-xl bg-slate-900 hover:bg-slate-800 border border-slate-700 text-xs font-semibold text-slate-300 flex items-center justify-center gap-2 transition-colors">
                   <ImageIcon className="w-3.5 h-3.5 text-slate-400" />
-                  <span>Upload de Foto do Computador</span>
+                  <span>Upload de Foto do Celular/Computador</span>
                   <input
                     type="file"
                     accept="image/*"
@@ -352,7 +404,7 @@ export const DishFormModal: React.FC<DishFormModalProps> = ({
                     type="text"
                     value={portionSize}
                     onChange={(e) => setPortionSize(e.target.value)}
-                    placeholder="Ex: 350g"
+                    placeholder="Ex: 220ml"
                     className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-xl text-xs text-white"
                   />
                 </div>
@@ -364,7 +416,7 @@ export const DishFormModal: React.FC<DishFormModalProps> = ({
                     type="text"
                     value={preparationTime}
                     onChange={(e) => setPreparationTime(e.target.value)}
-                    placeholder="Ex: 15-20 min"
+                    placeholder="Ex: 5 min"
                     className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-xl text-xs text-white"
                   />
                 </div>
@@ -376,7 +428,7 @@ export const DishFormModal: React.FC<DishFormModalProps> = ({
                     type="number"
                     value={calories}
                     onChange={(e) => setCalories(e.target.value)}
-                    placeholder="Ex: 650"
+                    placeholder="Ex: 145"
                     className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-xl text-xs text-white"
                   />
                 </div>
@@ -385,13 +437,13 @@ export const DishFormModal: React.FC<DishFormModalProps> = ({
               {/* Ingredients comma separated */}
               <div>
                 <label className="block text-[11px] font-bold text-slate-400 uppercase tracking-wider mb-1">
-                  Ingredientes (separados por vírgula)
+                  Ingredientes & Notas de Degustação
                 </label>
                 <input
                   type="text"
                   value={ingredientsText}
                   onChange={(e) => setIngredientsText(e.target.value)}
-                  placeholder="Pão brioche, Blend angus 240g, Queijo cheddar, Bacon artesanal..."
+                  placeholder="Café arábica bourbon amarelo, Leite vaporizado, Canela do Ceilão..."
                   className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-xl text-xs text-white"
                 />
               </div>
@@ -415,7 +467,7 @@ export const DishFormModal: React.FC<DishFormModalProps> = ({
                     isChefSpecial ? 'bg-amber-500/20 text-amber-300 border-amber-500/50' : 'bg-slate-950 text-slate-500 border-slate-800'
                   }`}
                 >
-                  ⭐ Especial do Chef
+                  ⭐ Especialidade da Casa
                 </button>
 
                 <button
@@ -451,7 +503,7 @@ export const DishFormModal: React.FC<DishFormModalProps> = ({
                     </span>
                   </div>
                   <span className="text-[10px] px-2 py-0.5 rounded-full bg-slate-800 text-slate-300">
-                    Auto-render
+                    Dual AR Ready
                   </span>
                 </div>
 
@@ -464,7 +516,7 @@ export const DishFormModal: React.FC<DishFormModalProps> = ({
                 </div>
 
                 <div className="mt-3 p-2.5 rounded-xl bg-slate-900/60 border border-slate-800/80 text-[11px] text-slate-400">
-                  💡 <strong className="text-slate-300">Dica:</strong> Modelos em formato <code>.glb</code> com compressão Draco e texturas até 2K garantem carregamento instantâneo no celular do cliente.
+                  💡 <strong className="text-slate-300">Compatibilidade:</strong> O arquivo <code>.glb</code> é exibido no Android e navegadores desktop; o arquivo <code>.usdz</code> ativa a câmera de AR nativa no iPhone.
                 </div>
               </div>
             </div>
@@ -486,10 +538,17 @@ export const DishFormModal: React.FC<DishFormModalProps> = ({
               className="py-3 px-6 rounded-xl bg-gradient-to-r from-orange-500 to-amber-500 hover:from-orange-400 hover:to-orange-500 text-white text-xs font-black shadow-lg shadow-orange-500/25 transition-all transform active:scale-98 flex items-center gap-2"
             >
               <Check className="w-4 h-4" />
-              <span>{dishToEdit ? 'Salvar Alterações' : 'Cadastrar Prato com 3D'}</span>
+              <span>{dishToEdit ? 'Salvar Alterações' : 'Publicar no Cardápio'}</span>
             </button>
           </div>
         </form>
+
+        {/* AI 3D Scanner Modal */}
+        <AI3DScannerModal
+          isOpen={isAIScannerOpen}
+          onClose={() => setIsAIScannerOpen(false)}
+          onApply3DModel={handleApplyAIResult}
+        />
       </div>
     </div>
   );
