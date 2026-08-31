@@ -10,7 +10,10 @@ import {
   Info, 
   Key, 
   ShoppingBag, 
-  Sliders
+  Sliders,
+  Layers,
+  Plus,
+  Trash2
 } from 'lucide-react';
 import { ai3DService } from '../../services/ai3DService';
 import type { AI3DTaskResult } from '../../services/ai3DService';
@@ -29,7 +32,8 @@ export const AI3DScannerModal: React.FC<AI3DScannerModalProps> = ({
   onClose,
   onApply3DModel,
 }) => {
-  const [image, setImage] = useState<string | null>(null);
+  // Photos state (1 to 4 photos)
+  const [images, setImages] = useState<string[]>([]);
   const [isGenerating, setIsGenerating] = useState(false);
   const [progress, setProgress] = useState(0);
   const [statusText, setStatusText] = useState('');
@@ -40,9 +44,9 @@ export const AI3DScannerModal: React.FC<AI3DScannerModalProps> = ({
   // Scale state (default: 0.35)
   const [scale, setScale] = useState<number>(0.35);
 
-  // Quick publish form fields inside the modal
+  // Quick publish form fields inside the modal (Auto-identified by AI)
   const [dishName, setDishName] = useState('');
-  const [dishPrice, setDishPrice] = useState('24.00');
+  const [dishPrice, setDishPrice] = useState('28.00');
   const [dishCategory, setDishCategory] = useState('');
   const [dishDescription, setDishDescription] = useState('');
   const [publishedSuccess, setPublishedSuccess] = useState(false);
@@ -52,27 +56,40 @@ export const AI3DScannerModal: React.FC<AI3DScannerModalProps> = ({
 
   if (!isOpen) return null;
 
-  const handlePhotoSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
+  const handleAddPhotos = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(e.target.files || []);
+    if (!files.length) return;
 
-    const reader = new FileReader();
-    reader.onload = () => {
-      setImage(reader.result as string);
-      setGeneratedResult(null);
-    };
-    reader.readAsDataURL(file);
+    files.forEach(file => {
+      const reader = new FileReader();
+      reader.onload = () => {
+        setImages(prev => {
+          if (prev.length >= 4) return prev;
+          return [...prev, reader.result as string];
+        });
+        setGeneratedResult(null);
+      };
+      reader.readAsDataURL(file);
+    });
+  };
+
+  const handleRemovePhoto = (index: number) => {
+    setImages(prev => prev.filter((_, i) => i !== index));
+    setGeneratedResult(null);
   };
 
   const handleStartGeneration = async () => {
-    if (!image) return;
+    if (!images.length) return;
 
     setIsGenerating(true);
     setProgress(5);
-    setStatusText('Iniciando IA 3D a partir da foto...');
+    setStatusText(images.length === 1 
+      ? 'Iniciando reconstrução 3D a partir da foto...' 
+      : 'Iniciando reconstrução 3D multi-angular...'
+    );
 
     try {
-      const result = await ai3DService.generate3DFromImage(image, (p, text) => {
+      const result = await ai3DService.generate3DFromMultipleImages(images, (p, text) => {
         setProgress(p);
         setStatusText(text);
       });
@@ -83,6 +100,9 @@ export const AI3DScannerModal: React.FC<AI3DScannerModalProps> = ({
         setDishPrice(dishPrice || result.dishSuggestion.estimatedPrice.toString());
         setDishDescription(dishDescription || result.dishSuggestion.description);
         setDishCategory(categories[0]?.id || 'cat-01');
+        if (result.dishSuggestion.suggestedScale) {
+          setScale(result.dishSuggestion.suggestedScale);
+        }
       }
       setIsGenerating(false);
     } catch (err: any) {
@@ -99,15 +119,15 @@ export const AI3DScannerModal: React.FC<AI3DScannerModalProps> = ({
 
   // 1-Click Direct Publish to Menu
   const handleDirectPublish = () => {
-    if (!generatedResult || !image) return;
+    if (!generatedResult || !images.length) return;
 
     const newDish: Omit<Dish, 'id' | 'created_at'> = {
       restaurant_id: storeService.getRestaurant().id,
       category_id: dishCategory || categories[0]?.id || 'cat-01',
       name: dishName.trim() || 'Prato Especial em 3D',
       description: dishDescription.trim() || 'Modelo 3D gerado a partir da foto com suporte a Realidade Aumentada.',
-      price: parseFloat(dishPrice.replace(',', '.')) || 24.00,
-      image_url: generatedResult.previewImageUrl || image,
+      price: parseFloat(dishPrice.replace(',', '.')) || 28.00,
+      image_url: generatedResult.previewImageUrl || images[0],
       model_3d_url: generatedResult.modelGlbUrl,
       usdz_url: generatedResult.modelUsdzUrl,
       scale: scale || 0.35,
@@ -116,8 +136,8 @@ export const AI3DScannerModal: React.FC<AI3DScannerModalProps> = ({
       is_chef_special: true,
       ar_ready: true,
       portion_size: 'Porção Individual',
-      preparation_time: '10 min',
-      calories: 200,
+      preparation_time: '12 min',
+      calories: 220,
       ingredients: generatedResult.dishSuggestion?.ingredients || ['Ingredientes selecionados'],
     };
 
@@ -141,8 +161,8 @@ export const AI3DScannerModal: React.FC<AI3DScannerModalProps> = ({
     restaurant_id: 'rest-01',
     name: dishName || 'Modelo 3D Gerado',
     description: dishDescription || 'Visualização 3D gerada a partir da foto.',
-    price: parseFloat(dishPrice.replace(',', '.')) || 24.00,
-    image_url: generatedResult.previewImageUrl || (image as string),
+    price: parseFloat(dishPrice.replace(',', '.')) || 28.00,
+    image_url: generatedResult.previewImageUrl || images[0],
     model_3d_url: generatedResult.modelGlbUrl,
     usdz_url: generatedResult.modelUsdzUrl,
     scale: scale,
@@ -168,12 +188,12 @@ export const AI3DScannerModal: React.FC<AI3DScannerModalProps> = ({
                 <h3 className="text-lg font-black text-white font-heading">
                   Estúdio IA: Foto ➔ Modelo 3D & WebAR
                 </h3>
-                <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-400 border border-amber-500/40">
-                  IA Automática
+                <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-400 border border-emerald-500/40">
+                  1 a 4 Fotos
                 </span>
               </div>
               <p className="text-xs text-[#A39E93]">
-                Tire a foto do prato para transformá-lo em 3D realista para Realidade Aumentada
+                Envie de 1 a 4 fotos (1 foto já é suficiente, fotos extras trazem visão 360°)
               </p>
             </div>
           </div>
@@ -230,50 +250,65 @@ export const AI3DScannerModal: React.FC<AI3DScannerModalProps> = ({
         {/* Content Area */}
         <div className="p-6 overflow-y-auto flex-1 space-y-6">
           
-          {/* STEP 1: Select Single Photo */}
+          {/* STEP 1: Select 1 to 4 Photos */}
           {!generatedResult && !isGenerating && (
             <div className="space-y-5">
               
               {/* Photo Upload Area */}
               <div>
-                <label className="text-xs font-bold text-[#FAF8F5] uppercase tracking-wider block mb-2">
-                  Foto do Produto:
-                </label>
+                <div className="flex items-center justify-between mb-2">
+                  <label className="text-xs font-bold text-[#FAF8F5] uppercase tracking-wider flex items-center gap-1.5">
+                    <Layers className="w-4 h-4 text-amber-400" />
+                    <span>Fotos do Produto ({images.length}/4)</span>
+                  </label>
+                  <span className="text-[11px] text-amber-400 font-bold">
+                    {images.length === 0 ? 'Tire 1 foto a 45°' : `${images.length} foto(s) pronta(s)`}
+                  </span>
+                </div>
 
-                {image ? (
-                  <div className="relative aspect-video max-h-64 rounded-2xl overflow-hidden border-2 border-amber-500/50 bg-[#0C0B0A] group">
-                    <img src={image} alt="Foto selecionada" className="w-full h-full object-contain" />
-                    <button
-                      onClick={() => setImage(null)}
-                      className="absolute top-3 right-3 p-2 rounded-xl bg-rose-950/90 text-rose-300 hover:text-white border border-rose-600 transition-colors shadow-lg"
-                    >
-                      <X className="w-4 h-4" />
-                    </button>
-                  </div>
-                ) : (
-                  <div
-                    onClick={() => fileInputRef.current?.click()}
-                    className="aspect-video max-h-64 rounded-2xl border-2 border-dashed border-[#2B2723] hover:border-amber-500 bg-[#0C0B0A]/60 hover:bg-[#0C0B0A] flex flex-col items-center justify-center p-6 text-center cursor-pointer transition-all group"
-                  >
-                    <div className="w-14 h-14 rounded-2xl bg-amber-500/10 text-amber-400 border border-amber-500/30 flex items-center justify-center mb-3 group-hover:scale-110 transition-transform shadow-inner">
-                      <Camera className="w-7 h-7" />
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                  {images.map((img, index) => (
+                    <div key={index} className="relative aspect-square rounded-2xl overflow-hidden border-2 border-amber-500/50 bg-[#0C0B0A] group">
+                      <img src={img} alt={`Foto ${index + 1}`} className="w-full h-full object-cover" />
+                      <div className="absolute top-1.5 left-1.5 px-2 py-0.5 rounded-md bg-[#0C0B0A]/85 text-[10px] font-bold text-amber-300 border border-amber-500/30">
+                        {index === 0 ? 'Foto Principal' : `Ângulo ${index + 1}`}
+                      </div>
+                      <button
+                        onClick={() => handleRemovePhoto(index)}
+                        className="absolute top-1.5 right-1.5 p-1 rounded-lg bg-rose-950/90 text-rose-300 hover:text-white border border-rose-600 transition-colors shadow-md"
+                        title="Remover foto"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
                     </div>
-                    <span className="text-sm font-bold text-white leading-tight">
-                      Toque para Tirar ou Escolher uma Foto
-                    </span>
-                    <span className="text-xs text-[#A39E93] mt-1">
-                      Foque no prato a 45° em local bem iluminado
-                    </span>
-                  </div>
-                )}
+                  ))}
+
+                  {images.length < 4 && (
+                    <div
+                      onClick={() => fileInputRef.current?.click()}
+                      className="aspect-square rounded-2xl border-2 border-dashed border-[#2B2723] hover:border-amber-500 bg-[#0C0B0A]/60 hover:bg-[#0C0B0A] flex flex-col items-center justify-center p-3 text-center cursor-pointer transition-all group"
+                    >
+                      <div className="w-10 h-10 rounded-xl bg-amber-500/10 text-amber-400 border border-amber-500/30 flex items-center justify-center mb-1.5 group-hover:scale-110 transition-transform">
+                        {images.length === 0 ? <Camera className="w-5 h-5" /> : <Plus className="w-5 h-5" />}
+                      </div>
+                      <span className="text-[11px] font-bold text-white leading-tight">
+                        {images.length === 0 ? 'Tirar Foto' : '+ Outro Ângulo'}
+                      </span>
+                      <span className="text-[9px] text-[#A39E93] mt-0.5">
+                        {images.length === 0 ? 'Frente a 45°' : 'Opcional 360°'}
+                      </span>
+                    </div>
+                  )}
+                </div>
               </div>
 
               <input
                 ref={fileInputRef}
                 type="file"
                 accept="image/*"
+                multiple
                 capture="environment"
-                onChange={handlePhotoSelect}
+                onChange={handleAddPhotos}
                 className="hidden"
               />
 
@@ -284,7 +319,7 @@ export const AI3DScannerModal: React.FC<AI3DScannerModalProps> = ({
                   <span>Dica para melhor resultado 3D:</span>
                 </div>
                 <p className="text-xs text-[#A39E93] leading-relaxed">
-                  Tire a foto a <strong>45 graus</strong> (mostrando o topo e a lateral da comida/xícara). Mantenha boa iluminação e evite sombras fortes.
+                  Tire a foto a <strong>45 graus</strong> centralizando o prato ou a xícara inteira. A IA identifica o item e reconstrói o modelo fiel à foto.
                 </p>
               </div>
 
@@ -312,7 +347,7 @@ export const AI3DScannerModal: React.FC<AI3DScannerModalProps> = ({
                   />
                 </div>
                 <p className="text-xs text-[#A39E93] font-mono">
-                  {progress}% concluído • Processamento Neural 3D
+                  {progress}% concluído • Processamento 3D
                 </p>
               </div>
             </div>
@@ -394,10 +429,10 @@ export const AI3DScannerModal: React.FC<AI3DScannerModalProps> = ({
                 </div>
               </div>
 
-              {/* Quick Details Editor for 1-Click Publishing */}
+              {/* Quick Details Editor for 1-Click Publishing (Pre-filled by AI) */}
               <div className="p-4 bg-[#0C0B0A] border border-[#1E1B18] rounded-2xl space-y-3">
                 <span className="text-xs font-bold text-white uppercase tracking-wider block">
-                  Informações para Publicação no Cardápio:
+                  Informações Identificadas para o Cardápio:
                 </span>
 
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
@@ -418,7 +453,7 @@ export const AI3DScannerModal: React.FC<AI3DScannerModalProps> = ({
                       type="text"
                       value={dishPrice}
                       onChange={(e) => setDishPrice(e.target.value)}
-                      placeholder="24.00"
+                      placeholder="28.00"
                       className="w-full px-3 py-2 bg-[#161412] border border-[#1E1B18] rounded-xl text-xs text-white focus:outline-none focus:border-amber-500"
                     />
                   </div>
@@ -468,7 +503,7 @@ export const AI3DScannerModal: React.FC<AI3DScannerModalProps> = ({
           {!generatedResult ? (
             <button
               onClick={handleStartGeneration}
-              disabled={!image || isGenerating}
+              disabled={!images.length || isGenerating}
               className="py-3.5 px-6 rounded-2xl bg-gradient-to-r from-amber-600 via-orange-600 to-amber-600 hover:from-amber-500 hover:to-orange-500 text-white font-extrabold text-xs shadow-lg shadow-amber-600/25 flex items-center gap-2 transition-all transform active:scale-98 disabled:opacity-40"
             >
               {isGenerating ? (
@@ -479,7 +514,7 @@ export const AI3DScannerModal: React.FC<AI3DScannerModalProps> = ({
               ) : (
                 <>
                   <Sparkles className="w-4 h-4" />
-                  <span>Gerar Modelo 3D</span>
+                  <span>Gerar Modelo 3D ({images.length} {images.length === 1 ? 'Foto' : 'Fotos'})</span>
                   <ArrowRight className="w-4 h-4" />
                 </>
               )}

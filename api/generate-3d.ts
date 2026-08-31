@@ -1,4 +1,4 @@
-// Vercel Serverless Function: Proxy to Tripo3D API (Proven Original Single-Photo Algorithm)
+// Vercel Serverless Function: Proxy to Tripo3D API (Supports Clean Single Image and Multi-View Photogrammetry)
 export const config = {
   api: {
     bodyParser: {
@@ -27,7 +27,14 @@ export default async function handler(req: any, res: any) {
   }
 
   try {
-    const { imageBase64, imageType, clientApiKey, requestType, originalTaskId } = req.body || {};
+    const { 
+      imageBase64, 
+      imagesBase64, 
+      imageType, 
+      clientApiKey, 
+      requestType, 
+      originalTaskId 
+    } = req.body || {};
 
     // Get Tripo API Key from environment or client
     const apiKey = 
@@ -66,14 +73,51 @@ export default async function handler(req: any, res: any) {
       }
     }
 
-    // 2. Standard image_to_model task request (The proven single-photo algorithm)
-    if (!imageBase64) {
+    // 2. Multi-view Photogrammetry (If 2 to 4 photos are provided)
+    if (Array.isArray(imagesBase64) && imagesBase64.length > 1) {
+      const formattedFiles = imagesBase64.map((b64: string) => {
+        const cleanB64 = b64.includes('base64,') ? b64.split('base64,')[1] : b64;
+        return {
+          type: 'jpg',
+          data: cleanB64,
+        };
+      });
+
+      const tripoMultiRes = await fetch('https://api.tripo3d.ai/v2/openapi/task', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${apiKey.trim()}`,
+        },
+        body: JSON.stringify({
+          type: 'multiview_to_model',
+          files: formattedFiles,
+        }),
+      });
+
+      const tripoMultiData = await tripoMultiRes.json();
+
+      if (tripoMultiData.code === 0 && tripoMultiData.data?.task_id) {
+        return res.status(200).json({
+          success: true,
+          taskId: tripoMultiData.data.task_id,
+          type: 'multiview_to_model',
+        });
+      }
+
+      console.warn('Multiview fallback to single image:', tripoMultiData);
+    }
+
+    // 3. Standard Single Image to 3D Model Task
+    const primaryImage = imageBase64 || (Array.isArray(imagesBase64) ? imagesBase64[0] : null);
+
+    if (!primaryImage) {
       return res.status(400).json({ error: 'Nenhuma imagem foi enviada.' });
     }
 
-    const base64Data = imageBase64.includes('base64,')
-      ? imageBase64.split('base64,')[1]
-      : imageBase64;
+    const base64Data = primaryImage.includes('base64,')
+      ? primaryImage.split('base64,')[1]
+      : primaryImage;
 
     const fileFormat = imageType === 'image/jpeg' ? 'jpg' : (imageType || 'png');
 
