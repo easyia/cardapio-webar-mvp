@@ -88,7 +88,11 @@ export const storeService = {
       return INITIAL_DISHES;
     }
     try {
-      return JSON.parse(saved);
+      const parsed: Dish[] = JSON.parse(saved);
+      return parsed.map(d => ({
+        ...d,
+        scale: d.scale || 0.35,
+      }));
     } catch {
       return INITIAL_DISHES;
     }
