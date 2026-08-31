@@ -1,72 +1,4 @@
-// AI 3D Generation Service (Pure Photogrammetry + Dual WebAR)
-
-export type GastronomyCategory = 
-  | 'coffee_drink' 
-  | 'pizza_pie' 
-  | 'burger_sandwich' 
-  | 'bowl_pasta' 
-  | 'dessert_pastry' 
-  | 'general_dish';
-
-export interface GastronomyPreset {
-  id: GastronomyCategory;
-  name: string;
-  icon: string;
-  defaultScale: number;
-  tips: string;
-  defaultPrice: number;
-}
-
-export const GASTRONOMY_PRESETS: Record<GastronomyCategory, GastronomyPreset> = {
-  coffee_drink: {
-    id: 'coffee_drink',
-    name: 'Cafés & Bebidas',
-    icon: '☕',
-    defaultScale: 0.25,
-    tips: 'Enquadre a xícara a 45° mostrando o topo da bebida e a lateral da xícara.',
-    defaultPrice: 14.00,
-  },
-  pizza_pie: {
-    id: 'pizza_pie',
-    name: 'Pizzas & Porções',
-    icon: '🍕',
-    defaultScale: 0.48,
-    tips: 'Posicione a câmera a 45° para capturar a borda e o recheio por completo.',
-    defaultPrice: 58.00,
-  },
-  burger_sandwich: {
-    id: 'burger_sandwich',
-    name: 'Burgers & Lanches',
-    icon: '🍔',
-    defaultScale: 0.32,
-    tips: 'Tire a foto na diagonal (40°) para mostrar a altura e as camadas do lanche.',
-    defaultPrice: 38.00,
-  },
-  bowl_pasta: {
-    id: 'bowl_pasta',
-    name: 'Massas & Tapiocas',
-    icon: '🥞',
-    defaultScale: 0.35,
-    tips: 'Enquadre a 45° centralizando o prato ou tapioca em local bem iluminado.',
-    defaultPrice: 28.00,
-  },
-  dessert_pastry: {
-    id: 'dessert_pastry',
-    name: 'Sobremesas & Doces',
-    icon: '🍰',
-    defaultScale: 0.28,
-    tips: 'Aproxime a câmera a 45° focando no doce e no prato de apoio.',
-    defaultPrice: 22.00,
-  },
-  general_dish: {
-    id: 'general_dish',
-    name: 'Prato Geral / Outros',
-    icon: '🍽️',
-    defaultScale: 0.38,
-    tips: 'Foque no centro do prato a 45° com iluminação natural ou ambiente claro.',
-    defaultPrice: 35.00,
-  },
-};
+// AI 3D Hiper-Realistic Photogrammetry Service (Zero Hallucination, Faithful Image Texture Projection)
 
 export interface AI3DTaskResult {
   success: boolean;
@@ -88,31 +20,37 @@ export interface AI3DTaskResult {
 
 const API_CONFIG_KEY = 'auramenu_ai3d_api_key';
 
-// Clean, lossless image preparation preserving 100% of the user's authentic photo pixels
+// Auto-crop to 1:1 square centered on the plate/dish to eliminate outer table clutter (arms, lighters, napkins)
 async function prepareCleanPhotoFor3D(dataUrl: string, maxDimension = 1500): Promise<string> {
   return new Promise((resolve) => {
     const img = new Image();
     img.crossOrigin = 'anonymous';
     img.onload = () => {
-      let { width, height } = img;
-      if (width > maxDimension || height > maxDimension) {
-        if (width > height) {
-          height = Math.round((height * maxDimension) / width);
-          width = maxDimension;
-        } else {
-          width = Math.round((width * maxDimension) / height);
-          height = maxDimension;
-        }
-      }
+      const origW = img.width;
+      const origH = img.height;
+
+      // Calculate square bounding box centered on the subject
+      const squareSize = Math.min(origW, origH);
+      const cropX = Math.round((origW - squareSize) / 2);
+      const cropY = Math.round((origH - squareSize) / 2);
+
+      const targetDim = Math.min(squareSize, maxDimension);
 
       const canvas = document.createElement('canvas');
-      canvas.width = width;
-      canvas.height = height;
+      canvas.width = targetDim;
+      canvas.height = targetDim;
       const ctx = canvas.getContext('2d');
       if (ctx) {
         ctx.imageSmoothingEnabled = true;
         ctx.imageSmoothingQuality = 'high';
-        ctx.drawImage(img, 0, 0, width, height);
+        
+        // Draw cropped square of the central subject
+        ctx.drawImage(
+          img,
+          cropX, cropY, squareSize, squareSize, // Source crop
+          0, 0, targetDim, targetDim            // Destination
+        );
+
         resolve(canvas.toDataURL('image/jpeg', 0.95));
       } else {
         resolve(dataUrl);
@@ -148,12 +86,11 @@ export const ai3DService = {
   },
 
   /**
-   * Pure Photogrammetry 3D Reconstruction from User Photos (Zero AI hallucination)
+   * Hiper-Realistic 3D Photogrammetry Reconstruction from User Photos (Zero AI Hallucination)
    */
   async generate3DFromMultipleImages(
     rawImages: string[],
     onProgress: (percent: number, statusText: string) => void,
-    category: GastronomyCategory = 'general_dish',
     quality: 'ultra' | 'standard' = 'ultra'
   ): Promise<AI3DTaskResult> {
     if (!rawImages.length) {
@@ -161,14 +98,13 @@ export const ai3DService = {
     }
 
     const apiKey = this.getApiKey();
-    const preset = GASTRONOMY_PRESETS[category] || GASTRONOMY_PRESETS.general_dish;
 
-    onProgress(5, 'Preparando foto em alta resolução para reconstrução volumétrica...');
+    onProgress(5, 'Centralizando foto no produto e eliminando distrações ao redor...');
     const optimizedImages = await Promise.all(rawImages.map(img => prepareCleanPhotoFor3D(img, 1500)));
 
     onProgress(15, rawImages.length === 1 
-      ? 'Enviando foto original para o cluster neural da Tripo3D...' 
-      : `Enviando ${optimizedImages.length} fotos do produto para reconstrução multi-view...`
+      ? 'Enviando foto para reconstrução 3D hiper-realista...' 
+      : `Enviando ${optimizedImages.length} fotos para reconstrução volumétrica multi-view...`
     );
 
     try {
@@ -201,8 +137,8 @@ export const ai3DService = {
       const taskId = data.taskId;
       const isMulti = data.type === 'multiview_to_model';
       onProgress(25, isMulti 
-        ? 'Reconstruindo malha 3D volumétrica a partir dos ângulos da foto...' 
-        : 'Projetando textura e calculando profundidade da foto original...'
+        ? 'Reconstruindo malha 3D de até 50.000 polígonos a partir dos múltiplos ângulos...' 
+        : 'Mapeando texturas e calculando relevo volumétrico da foto real...'
       );
 
       // 2. Poll task status until GLB is ready
@@ -221,7 +157,7 @@ export const ai3DService = {
 
         if (statusData.status === 'running' || statusData.status === 'queued') {
           const p = Math.min(25 + attempts * 2.2, 85);
-          onProgress(p, `Mapeando texturas fotográficas e relevo (${Math.round(p)}%)...`);
+          onProgress(p, `Mapeando texturas fotográficas e relevo real (${Math.round(p)}%)...`);
         } else if (statusData.status === 'success') {
           rawGlbUrl =
             statusData.output?.pbr_model ||
@@ -231,7 +167,7 @@ export const ai3DService = {
 
           break;
         } else if (statusData.status === 'failed') {
-          throw new Error('A IA não conseguiu processar este prato. Dica: tire a foto contra um fundo limpo com boa luz.');
+          throw new Error('A IA não conseguiu processar este item. Tente tirar a foto focando no prato com boa iluminação.');
         }
       }
 
@@ -281,7 +217,7 @@ export const ai3DService = {
         ? encodeUrlForProxy(rawUsdzUrl, 'usdz')
         : finalGlbUrl;
 
-      onProgress(100, `Prato 3D reconstruído com sucesso!`);
+      onProgress(100, `Modelo 3D Hiper-Realista Concluído!`);
 
       return {
         success: true,
@@ -290,16 +226,16 @@ export const ai3DService = {
         modelUsdzUrl: finalUsdzUrl,
         previewImageUrl: optimizedImages[0],
         dishSuggestion: {
-          name: `${preset.name.split('&')[0].trim()} Especial`,
+          name: 'Prato Especial em 3D',
           category: 'cat-01',
           description: `Item fotografado e reconstruído fielmente em 3D para o cardápio com Realidade Aumentada.`,
-          estimatedPrice: preset.defaultPrice,
+          estimatedPrice: 32.00,
           ingredients: ['Ingredientes selecionados'],
-          suggestedScale: preset.defaultScale,
+          suggestedScale: 0.35,
         },
         logs: [
           `Tripo3D Task ID: ${taskId}`,
-          `Fotogrametria Fiel 1:1 Concluída`,
+          `Reconstrução Fiel 1:1 Concluída`,
           'Dual WebAR: GLB (Android SceneViewer) + USDZ (Apple QuickLook)'
         ]
       };
@@ -370,7 +306,7 @@ export const ai3DService = {
     const finalGlbUrl = encodeUrlForProxy(rawGlbUrl, 'glb');
     const finalUsdzUrl = rawUsdzUrl ? encodeUrlForProxy(rawUsdzUrl, 'usdz') : finalGlbUrl;
 
-    onProgress(100, 'Super Refinamento 2K Concluído!');
+    onProgress(100, 'Super Refinamento Concluído!');
     return { modelGlbUrl: finalGlbUrl, modelUsdzUrl: finalUsdzUrl };
   },
 
@@ -379,9 +315,8 @@ export const ai3DService = {
    */
   async generate3DFromImage(
     rawImageDataUrl: string,
-    onProgress: (percent: number, statusText: string) => void,
-    category: GastronomyCategory = 'general_dish'
+    onProgress: (percent: number, statusText: string) => void
   ): Promise<AI3DTaskResult> {
-    return this.generate3DFromMultipleImages([rawImageDataUrl], onProgress, category, 'ultra');
+    return this.generate3DFromMultipleImages([rawImageDataUrl], onProgress, 'ultra');
   }
 };

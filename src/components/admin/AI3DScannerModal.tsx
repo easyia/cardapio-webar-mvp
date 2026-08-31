@@ -14,10 +14,10 @@ import {
   ShoppingBag, 
   Sliders,
   Wand2,
-  Utensils
+  Scan
 } from 'lucide-react';
-import { ai3DService, GASTRONOMY_PRESETS } from '../../services/ai3DService';
-import type { AI3DTaskResult, GastronomyCategory } from '../../services/ai3DService';
+import { ai3DService } from '../../services/ai3DService';
+import type { AI3DTaskResult } from '../../services/ai3DService';
 import { ModelViewer3D } from '../ar/ModelViewer3D';
 import type { Dish, Category } from '../../types';
 import { storeService } from '../../services/storeService';
@@ -33,9 +33,6 @@ export const AI3DScannerModal: React.FC<AI3DScannerModalProps> = ({
   onClose,
   onApply3DModel,
 }) => {
-  // Gastronomy Category Selection (Default: pizza or coffee)
-  const [selectedGastronomyCategory, setSelectedGastronomyCategory] = useState<GastronomyCategory>('coffee_drink');
-
   // Multiple images state (1 to 4 angles)
   const [images, setImages] = useState<string[]>([]);
   const [isGenerating, setIsGenerating] = useState(false);
@@ -46,16 +43,12 @@ export const AI3DScannerModal: React.FC<AI3DScannerModalProps> = ({
   const [apiKey, setApiKey] = useState(ai3DService.getApiKey());
   const [showApiKeySettings, setShowApiKeySettings] = useState(false);
 
-  // Quality Engine Mode (Default: Ultra HD v2.5)
-  const qualityMode = 'ultra';
-
-  // Scale state (calibrated by gastronomy preset)
-  const activePreset = GASTRONOMY_PRESETS[selectedGastronomyCategory] || GASTRONOMY_PRESETS.general_dish;
-  const [scale, setScale] = useState<number>(activePreset.defaultScale);
+  // Scale state (default: 0.35)
+  const [scale, setScale] = useState<number>(0.35);
 
   // Quick publish form fields inside the modal
   const [dishName, setDishName] = useState('');
-  const [dishPrice, setDishPrice] = useState(activePreset.defaultPrice.toString());
+  const [dishPrice, setDishPrice] = useState('32.00');
   const [dishCategory, setDishCategory] = useState('');
   const [dishDescription, setDishDescription] = useState('');
   const [publishedSuccess, setPublishedSuccess] = useState(false);
@@ -64,14 +57,6 @@ export const AI3DScannerModal: React.FC<AI3DScannerModalProps> = ({
   const categories: Category[] = storeService.getCategories();
 
   if (!isOpen) return null;
-
-  const handleSelectCategory = (cat: GastronomyCategory) => {
-    setSelectedGastronomyCategory(cat);
-    const p = GASTRONOMY_PRESETS[cat];
-    setScale(p.defaultScale);
-    setDishPrice(p.defaultPrice.toString());
-    setDishName(p.name.split('&')[0].trim());
-  };
 
   const handleAddPhotos = (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(e.target.files || []);
@@ -100,7 +85,7 @@ export const AI3DScannerModal: React.FC<AI3DScannerModalProps> = ({
 
     setIsGenerating(true);
     setProgress(5);
-    setStatusText(`Iniciando IA Gastronômica v2.5 (${activePreset.name})...`);
+    setStatusText('Iniciando Fotogrametria 3D Hiper-Realista...');
 
     try {
       const result = await ai3DService.generate3DFromMultipleImages(
@@ -109,8 +94,7 @@ export const AI3DScannerModal: React.FC<AI3DScannerModalProps> = ({
           setProgress(p);
           setStatusText(text);
         },
-        selectedGastronomyCategory,
-        qualityMode
+        'ultra'
       );
 
       setGeneratedResult(result);
@@ -135,7 +119,7 @@ export const AI3DScannerModal: React.FC<AI3DScannerModalProps> = ({
 
     setIsRefining(true);
     setProgress(10);
-    setStatusText('Iniciando Super Refinamento Neural Gastronômico 2K...');
+    setStatusText('Iniciando Super Refinamento Neural 2K...');
 
     try {
       const refined = await ai3DService.refine3DModel(
@@ -172,20 +156,20 @@ export const AI3DScannerModal: React.FC<AI3DScannerModalProps> = ({
     const newDish: Omit<Dish, 'id' | 'created_at'> = {
       restaurant_id: storeService.getRestaurant().id,
       category_id: dishCategory || categories[0]?.id || 'cat-01',
-      name: dishName.trim() || `${activePreset.name.split('&')[0].trim()} Autoral`,
-      description: dishDescription.trim() || `Preparado com ingredientes selecionados e renderizado em 3D de alta fidelidade.`,
-      price: parseFloat(dishPrice.replace(',', '.')) || activePreset.defaultPrice,
+      name: dishName.trim() || 'Prato Especial em 3D',
+      description: dishDescription.trim() || 'Item fotografado e reconstruído fielmente em 3D para o cardápio com Realidade Aumentada.',
+      price: parseFloat(dishPrice.replace(',', '.')) || 32.00,
       image_url: generatedResult.previewImageUrl,
       model_3d_url: generatedResult.modelGlbUrl,
       usdz_url: generatedResult.modelUsdzUrl,
-      scale: scale || activePreset.defaultScale,
+      scale: scale || 0.35,
       is_active: true,
       is_featured: true,
       is_chef_special: true,
       ar_ready: true,
       portion_size: 'Porção Individual',
-      preparation_time: '12 min',
-      calories: 280,
+      preparation_time: '15 min',
+      calories: 250,
       ingredients: generatedResult.dishSuggestion?.ingredients || ['Ingredientes selecionados'],
     };
 
@@ -207,9 +191,9 @@ export const AI3DScannerModal: React.FC<AI3DScannerModalProps> = ({
     id: 'generated-temp',
     category_id: dishCategory || 'cat-01',
     restaurant_id: 'rest-01',
-    name: dishName || `${activePreset.name} em 3D`,
-    description: dishDescription || 'Visualização 3D foto-realista otimizada para gastronomia.',
-    price: parseFloat(dishPrice.replace(',', '.')) || activePreset.defaultPrice,
+    name: dishName || 'Item em 3D Real',
+    description: dishDescription || 'Visualização 3D foto-realista.',
+    price: parseFloat(dishPrice.replace(',', '.')) || 32.00,
     image_url: generatedResult.previewImageUrl,
     model_3d_url: generatedResult.modelGlbUrl,
     usdz_url: generatedResult.modelUsdzUrl,
@@ -229,19 +213,19 @@ export const AI3DScannerModal: React.FC<AI3DScannerModalProps> = ({
         <div className="p-5 sm:p-6 bg-[#0C0B0A] border-b border-[#1E1B18] flex items-center justify-between">
           <div className="flex items-center gap-3">
             <div className="p-2.5 rounded-2xl bg-gradient-to-tr from-amber-600 to-orange-500 text-white shadow-lg shadow-amber-600/25">
-              <Utensils className="w-6 h-6 animate-pulse" />
+              <Scan className="w-6 h-6 animate-pulse" />
             </div>
             <div>
               <div className="flex items-center gap-2">
                 <h3 className="text-lg font-black text-white font-heading">
-                  Estúdio Gastronômico 3D v2.5
+                  Escaneamento 3D Hiper-Realista
                 </h3>
-                <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-300 border border-amber-500/40 font-mono">
-                  Food AI Engine
+                <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-400 border border-emerald-500/40 font-mono">
+                  100% Foto Real
                 </span>
               </div>
               <p className="text-xs text-[#A39E93]">
-                Otimizado para cafés, pizzas, hambúrgueres, merendas e pratos autorais
+                Reconstrução volumétrica 1:1 fiel à foto real do seu prato
               </p>
             </div>
           </div>
@@ -298,46 +282,19 @@ export const AI3DScannerModal: React.FC<AI3DScannerModalProps> = ({
         {/* Content Area */}
         <div className="p-6 overflow-y-auto flex-1 space-y-6">
           
-          {/* STEP 1: Capture Photos & Gastronomy Setup */}
+          {/* STEP 1: Capture Photos */}
           {!generatedResult && !isGenerating && (
             <div className="space-y-5">
               
-              {/* Gastronomy Category Presets Selector */}
-              <div>
-                <label className="text-xs font-bold text-[#FAF8F5] uppercase tracking-wider block mb-2">
-                  1. Selecione o Tipo de Comida ou Bebida:
-                </label>
-                <div className="grid grid-cols-3 sm:grid-cols-6 gap-2">
-                  {Object.values(GASTRONOMY_PRESETS).map((p) => {
-                    const isSelected = selectedGastronomyCategory === p.id;
-                    return (
-                      <button
-                        key={p.id}
-                        type="button"
-                        onClick={() => handleSelectCategory(p.id)}
-                        className={`p-2.5 rounded-2xl border flex flex-col items-center justify-center text-center transition-all cursor-pointer ${
-                          isSelected
-                            ? 'bg-gradient-to-b from-amber-600/30 to-orange-600/20 border-amber-500 text-white shadow-lg shadow-amber-600/20'
-                            : 'bg-[#0C0B0A] border-[#1E1B18] text-[#A39E93] hover:border-[#2B2723] hover:text-white'
-                        }`}
-                      >
-                        <span className="text-2xl mb-1">{p.icon}</span>
-                        <span className="text-[11px] font-bold leading-tight">{p.name.split('&')[0]}</span>
-                      </button>
-                    );
-                  })}
-                </div>
-              </div>
-
               {/* Photo Angles Grid (Up to 4 angles) */}
               <div>
                 <div className="flex items-center justify-between mb-2.5">
                   <label className="text-xs font-bold text-[#FAF8F5] uppercase tracking-wider flex items-center gap-1.5">
                     <Layers className="w-4 h-4 text-amber-400" />
-                    <span>Fotos do Prato ({images.length}/4)</span>
+                    <span>Fotos do Produto ({images.length}/4)</span>
                   </label>
                   <span className="text-[11px] text-amber-400 font-bold">
-                    {images.length === 0 ? '1 foto já funciona!' : `${images.length} foto(s) pronta(s)`}
+                    {images.length === 0 ? 'Tire 1 foto do prato completo' : `${images.length} foto(s) pronta(s)`}
                   </span>
                 </div>
 
@@ -347,7 +304,7 @@ export const AI3DScannerModal: React.FC<AI3DScannerModalProps> = ({
                     <div key={index} className="relative aspect-square rounded-2xl overflow-hidden border-2 border-amber-500/50 bg-[#0C0B0A] group">
                       <img src={img} alt={`Foto ${index + 1}`} className="w-full h-full object-cover" />
                       <div className="absolute top-1.5 left-1.5 px-2 py-0.5 rounded-md bg-[#0C0B0A]/85 text-[10px] font-bold text-amber-300 border border-amber-500/30">
-                        {index === 0 ? 'Frente (45°)' : `Ângulo ${index + 1}`}
+                        {index === 0 ? 'Foto Principal' : `Ângulo ${index + 1}`}
                       </div>
                       <button
                         onClick={() => handleRemovePhoto(index)}
@@ -372,7 +329,7 @@ export const AI3DScannerModal: React.FC<AI3DScannerModalProps> = ({
                         {images.length === 0 ? 'Tirar Foto do Prato' : `+ Outro Ângulo (Opcional)`}
                       </span>
                       <span className="text-[9px] text-[#A39E93] mt-0.5">
-                        {images.length === 0 ? 'Frente a 45°' : 'Topo ou Lateral'}
+                        {images.length === 0 ? 'Enquadre o prato no centro' : 'Topo ou Lateral'}
                       </span>
                     </div>
                   )}
@@ -389,12 +346,12 @@ export const AI3DScannerModal: React.FC<AI3DScannerModalProps> = ({
                 className="hidden"
               />
 
-              {/* Dynamic Gastronomy Tip Banner */}
+              {/* Guidance for High-Fidelity Plating */}
               <div className="p-3.5 bg-gradient-to-r from-amber-500/15 via-orange-500/10 to-[#0C0B0A] border border-amber-500/40 rounded-2xl flex items-start gap-3">
-                <span className="text-xl mt-0.5">{activePreset.icon}</span>
+                <Sparkles className="w-5 h-5 text-amber-400 flex-shrink-0 mt-0.5" />
                 <div className="text-xs text-slate-200 leading-relaxed">
-                  <strong className="text-amber-300 block mb-0.5">Dica de Ouro para {activePreset.name}:</strong>
-                  {activePreset.tips}
+                  <strong className="text-amber-300 block mb-0.5">Dica para Máxima Fidelidade e Realismo:</strong>
+                  Tire a foto a 45 graus centralizando o prato ou a xícara inteira. A IA mapeia os pixels reais da comida diretamente sobre a malha 3D.
                 </div>
               </div>
 
@@ -422,7 +379,7 @@ export const AI3DScannerModal: React.FC<AI3DScannerModalProps> = ({
                   />
                 </div>
                 <p className="text-xs text-[#A39E93] font-mono">
-                  {progress}% concluído • IA Gastronômica v2.5 Ultra HD
+                  {progress}% concluído • Fotogrametria 3D Real
                 </p>
               </div>
             </div>
@@ -434,7 +391,7 @@ export const AI3DScannerModal: React.FC<AI3DScannerModalProps> = ({
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2 text-xs font-bold text-emerald-400 uppercase tracking-wider">
                   <Check className="w-4 h-4" />
-                  <span>Prato 3D Foto-Realista Gerado com Sucesso!</span>
+                  <span>Modelo 3D Foto-Realista Concluído!</span>
                 </div>
                 {generatedResult.isRefined ? (
                   <span className="text-[10px] text-amber-300 font-bold bg-amber-500/20 px-2 py-0.5 rounded-full border border-amber-500/40">
@@ -463,7 +420,7 @@ export const AI3DScannerModal: React.FC<AI3DScannerModalProps> = ({
                     <Wand2 className="w-5 h-5 text-amber-400 animate-pulse flex-shrink-0" />
                     <div>
                       <h5 className="text-xs font-black text-white">Deseja polir ainda mais o prato?</h5>
-                      <p className="text-[10px] text-[#A39E93]">Alisa bordas, realça o brilho dos queijos/molhos e gera texturas 2K.</p>
+                      <p className="text-[10px] text-[#A39E93]">Alisa a malha e gera texturas 2K de alta definição.</p>
                     </div>
                   </div>
 
@@ -506,28 +463,28 @@ export const AI3DScannerModal: React.FC<AI3DScannerModalProps> = ({
                     onClick={() => setScale(0.25)}
                     className={`py-1 rounded-lg text-[10px] font-bold border ${scale === 0.25 ? 'bg-amber-600 text-white' : 'bg-[#161412] text-[#A39E93]'}`}
                   >
-                    25% (Café/Xícara)
+                    25% (Café)
                   </button>
                   <button
                     type="button"
-                    onClick={() => setScale(0.32)}
-                    className={`py-1 rounded-lg text-[10px] font-bold border ${scale === 0.32 ? 'bg-amber-600 text-white' : 'bg-[#161412] text-[#A39E93]'}`}
+                    onClick={() => setScale(0.35)}
+                    className={`py-1 rounded-lg text-[10px] font-bold border ${scale === 0.35 ? 'bg-amber-600 text-white' : 'bg-[#161412] text-[#A39E93]'}`}
                   >
-                    32% (Burger/Doce)
+                    35% (Prato)
                   </button>
                   <button
                     type="button"
-                    onClick={() => setScale(0.48)}
-                    className={`py-1 rounded-lg text-[10px] font-bold border ${scale === 0.48 ? 'bg-amber-600 text-white' : 'bg-[#161412] text-[#A39E93]'}`}
+                    onClick={() => setScale(0.50)}
+                    className={`py-1 rounded-lg text-[10px] font-bold border ${scale === 0.50 ? 'bg-amber-600 text-white' : 'bg-[#161412] text-[#A39E93]'}`}
                   >
-                    48% (Pizza/Massa)
+                    50% (Pizza/Massa)
                   </button>
                   <button
                     type="button"
                     onClick={() => setScale(0.75)}
                     className={`py-1 rounded-lg text-[10px] font-bold border ${scale === 0.75 ? 'bg-amber-600 text-white' : 'bg-[#161412] text-[#A39E93]'}`}
                   >
-                    75% (Tábua Grande)
+                    75% (Tábua)
                   </button>
                 </div>
               </div>
@@ -540,12 +497,12 @@ export const AI3DScannerModal: React.FC<AI3DScannerModalProps> = ({
 
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                   <div className="sm:col-span-2">
-                    <label className="block text-[10px] font-bold text-[#A39E93] uppercase mb-1">Nome do Item</label>
+                    <label className="block text-[10px] font-bold text-[#A39E93] uppercase mb-1">Nome do Prato</label>
                     <input
                       type="text"
                       value={dishName}
                       onChange={(e) => setDishName(e.target.value)}
-                      placeholder="Ex: Pizza Margherita Artesanal ou Cappuccino Italiano"
+                      placeholder="Ex: Tapioca Especial da Casa"
                       className="w-full px-3 py-2 bg-[#161412] border border-[#1E1B18] rounded-xl text-xs text-white focus:outline-none focus:border-amber-500"
                     />
                   </div>
@@ -612,12 +569,12 @@ export const AI3DScannerModal: React.FC<AI3DScannerModalProps> = ({
               {isGenerating ? (
                 <>
                   <Loader2 className="w-4 h-4 animate-spin" />
-                  <span>Processando {activePreset.name}...</span>
+                  <span>Reconstruindo 3D Real...</span>
                 </>
               ) : (
                 <>
                   <Sparkles className="w-4 h-4" />
-                  <span>Gerar {activePreset.name.split('&')[0]} em 3D ({images.length} {images.length === 1 ? 'Foto' : 'Fotos'})</span>
+                  <span>Gerar Prato em 3D ({images.length} {images.length === 1 ? 'Foto' : 'Fotos'})</span>
                   <ArrowRight className="w-4 h-4" />
                 </>
               )}
